@@ -56,9 +56,11 @@ def node_metrics(df: pd.DataFrame, threshold: float, cfg: Config, ci: int = 0) -
     return out
 
 
-def edge_metrics(df: pd.DataFrame, threshold: float) -> dict:
+def edge_metrics(df: pd.DataFrame, threshold: float, probabilistic: bool) -> dict:
+    """Our protocol (validation-chosen threshold) and IBM's (argmax of two classes = 0.5 cut)."""
     y, s = df["is_laundering"].to_numpy(bool), df["score"].to_numpy(float)
     t = M.threshold_metrics(y, s, threshold)
+    ibm = M.threshold_metrics(y, s, 0.5)["f1"] if probabilistic else np.nan
     return {
         "rows": len(df),
         "positives": int(y.sum()),
@@ -66,6 +68,7 @@ def edge_metrics(df: pd.DataFrame, threshold: float) -> dict:
         "minority_f1": t["f1"],
         "precision@val_threshold": t["precision"],
         "recall@val_threshold": t["recall"],
+        "minority_f1@0.5": ibm,
     }
 
 
@@ -106,7 +109,8 @@ def evaluate_model(cfg: Config, task: str, model_dir: Path, final: bool) -> dict
                 ci = cfg.evaluation.bootstrap if (i == 0 and window in TEST_WINDOWS) else 0
                 m = node_metrics(df, info["threshold"], cfg, ci)
             else:
-                m = edge_metrics(df, info["threshold"])
+                probabilistic = info.get("probabilistic", model_dir.name.startswith("xgb"))
+                m = edge_metrics(df, info["threshold"], probabilistic)
             m["train_seconds"] = info["train_seconds"]
             m["score_seconds_per_1k"] = info["score_seconds_per_1k"]
             per_seed.append(m)
@@ -142,6 +146,7 @@ EDGE_COLUMNS = [
     ("minority_f1", "minority F1"),
     ("precision@val_threshold", "precision"),
     ("recall@val_threshold", "recall"),
+    ("minority_f1@0.5", "F1 @ 0.5 (IBM protocol)"),
 ]
 
 
@@ -169,6 +174,13 @@ def write_results(cfg: Config, task: str) -> Path:
         "Mean ± std over seeds. Thresholds are chosen on validation and frozen for test. "
         "Test windows appear only for models evaluated with --final."
     )
+    if task == "edge":
+        rep.note(
+            "minority F1 uses a validation-chosen threshold. F1 @ 0.5 is IBM's protocol "
+            "(argmax over two classes) and is the column comparable with Multi-GNN, which "
+            "reports the test F1 at its best-validation epoch. Multi-GNN rows are imported "
+            "from its own training log."
+        )
     for window in ("val", *TEST_WINDOWS):
         rows = []
         for r in results:
@@ -187,7 +199,7 @@ def write_results(cfg: Config, task: str) -> Path:
                 row["PR-AUC 95% CI (seed 0)"] = (
                     f"{ms['pr_auc_ci_low']['mean']:.3f}-{ms['pr_auc_ci_high']['mean']:.3f}"
                 )
-            row["positives"] = int(ms["positives"]["mean"])
+            row["positives"] = int(ms["positives"]["mean"]) if "positives" in ms else "-"
             rows.append(row)
         if rows:
             rep.section(f"Window: {window}")
@@ -200,7 +212,10 @@ def write_results(cfg: Config, task: str) -> Path:
 
 def run_evaluate(cfg: Config, task: str, models: list[str] | None, final: bool) -> Path:
     task_dir = cfg.paths.runs_dir / task
-    names = models or sorted(p.name for p in task_dir.iterdir() if p.is_dir())
+    # Imported reference runs (no seed folders) are reported, never re-evaluated.
+    names = models or sorted(
+        p.name for p in task_dir.iterdir() if p.is_dir() and any(p.glob("seed*"))
+    )
     for name in names:
         evaluate_model(cfg, task, task_dir / name, final)
     return write_results(cfg, task)

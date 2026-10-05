@@ -19,7 +19,10 @@ mule score --top 10        # highest-scoring accounts in the test window
 mule score -a BANK:ACCOUNT # one account with its strongest SHAP evidence
 ```
 
-Single model: `mule train -t edge -m xgb --seeds 3`. MLflow runs live in `mlflow.db`;
+Single model: `mule train -t edge -m xgb_graph --seeds 3` (models: rule_ach, rules, xgb,
+xgb_graph, xgb_full; a model with recorded --final results needs `--force` to retrain).
+
+IBM Multi-GNN reference: `scripts/run_multignn.sh <their args>` then `mule import-multignn`. MLflow runs live in `mlflow.db`;
 browse them with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 
 ```text

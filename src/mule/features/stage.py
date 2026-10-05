@@ -8,8 +8,8 @@ import time
 import pandas as pd
 
 from mule.config import Config
-from mule.features.account import GROUPS, account_features, feature_groups
-from mule.io import TX_SCHEMA, read_parquet, write_parquet
+from mule.features.account import GROUPS, account_features, entity_table, feature_groups
+from mule.io import ACCOUNT_INDEX_SCHEMA, TX_SCHEMA, read_parquet, write_parquet
 from mule.labels.split import label_windows, load_manifest, window_bounds
 
 
@@ -20,6 +20,13 @@ def run_features(cfg: Config) -> dict:
     if manifest.get("config_hash") != expected:
         raise RuntimeError("split_manifest.json is stale for this config: rerun `mule labels`")
     tx = read_parquet(cfg.paths.interim_dir / "transactions.parquet", TX_SCHEMA)
+    entity = None
+    meta_path = cfg.paths.interim_dir / "accounts_meta.parquet"
+    if meta_path.exists():
+        index = read_parquet(cfg.paths.interim_dir / "account_index.parquet", ACCOUNT_INDEX_SCHEMA)
+        entity = entity_table(pd.read_parquet(meta_path), index)
+    else:
+        print("WARNING: accounts_meta.parquet missing; entity features will be NaN")
 
     frames, timings = [], {}
     windows = label_windows(manifest)
@@ -27,7 +34,7 @@ def run_features(cfg: Config) -> dict:
         t0 = time.perf_counter()
         start, end = window_bounds(manifest, name)
         feats = account_features(
-            tx, start, end, cfg.features.lookback_hours, cfg.features.forward_hours
+            tx, start, end, cfg.features.lookback_hours, cfg.features.forward_hours, entity
         )
         frames.append(feats.reset_index().assign(window=name))
         timings[name] = round(time.perf_counter() - t0, 1)

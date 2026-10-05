@@ -5,7 +5,13 @@ from __future__ import annotations
 from mule.config import Config
 from mule.models.base import Model
 
-MODEL_NAMES = ("rule_ach", "rules", "xgb")
+MODEL_NAMES = ("rule_ach", "rules", "xgb", "xgb_graph", "xgb_full")
+# XGBoost variants differ only in the feature groups they see, so their gaps are clean ablations.
+XGB_GROUPS = {
+    "xgb": ("vol", "cp", "pt", "ch", "xb"),  # Tier 1 (v1 baseline)
+    "xgb_graph": ("vol", "cp", "pt", "ch", "xb", "gr"),  # + graph features
+    "xgb_full": ("vol", "cp", "pt", "ch", "xb", "gr", "en"),  # + entity features
+}
 TASKS = ("node", "edge")
 
 
@@ -20,8 +26,8 @@ def make_model(name: str, task: str, cfg: Config) -> Model:
         from mule.models.rules import AnalystRules
 
         return AnalystRules(task, cfg.models.rules)
-    if name == "xgb":
+    if name in XGB_GROUPS:
         from mule.models.xgb import XGBModel
 
-        return XGBModel(cfg.models.xgb)
+        return XGBModel(cfg.models.xgb, name, XGB_GROUPS[name])
     raise ValueError(f"unknown model {name!r}; choose from {MODEL_NAMES}")

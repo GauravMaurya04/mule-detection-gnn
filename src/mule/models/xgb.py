@@ -15,14 +15,15 @@ from mule.models.base import Model
 
 class XGBModel(Model):
     name = "xgb"
+    probabilistic = True
 
-    def __init__(self, cfg: XGBConfig):
-        self.cfg = cfg
+    def __init__(self, cfg: XGBConfig, name: str = "xgb", groups: tuple[str, ...] | None = None):
+        self.cfg, self.name, self.groups = cfg, name, groups
         self.booster: xgb.Booster | None = None
         self.best_iteration = 0
 
     def params(self) -> dict:
-        return self.cfg.model_dump()
+        return {**self.cfg.model_dump(), "groups": ",".join(self.groups or ("all",))}
 
     def fit(self, train, val, seed: int) -> dict:
         pos = int(train.y.sum())

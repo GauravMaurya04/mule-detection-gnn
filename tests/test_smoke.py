@@ -59,6 +59,6 @@ def test_labels_and_features_stages(tiny_project):
     out = run_features(cfg)
     feats = pd.read_parquet(cfg.paths.processed_dir / "account_features.parquet")
     meta = json.loads((cfg.paths.processed_dir / "account_features.meta.json").read_text())
-    assert out["features"] == len(meta["feature_columns"]) == 32  # fixture has only 4 formats
+    assert out["features"] == len(meta["feature_columns"]) == 48  # fixture has only 4 formats
     merged = labels.merge(feats, on=["window", "account_id"], how="left", validate="one_to_one")
     assert len(merged) == len(labels)  # every labelled account has a feature row

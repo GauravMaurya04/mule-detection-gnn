@@ -4,7 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mule.features.account import FORBIDDEN, N_FEATURES, account_features, feature_groups
+from mule.features.account import (
+    FORBIDDEN,
+    N_FEATURES,
+    account_features,
+    entity_table,
+    feature_groups,
+)
 
 START, END = pd.Timestamp("2022-09-03"), pd.Timestamp("2022-09-05")
 
@@ -101,10 +107,10 @@ def test_known_pass_through_values():
     assert f["cp_log_unique_senders"] == pytest.approx(np.log1p(2))
 
 
-def test_schema_is_exactly_32_columns_whatever_formats_appear():
+def test_schema_is_exactly_48_columns_whatever_formats_appear():
     feats = account_features(_random_tx(), START, END)  # only 4 of the 7 formats present
     assert {p: len(c) for p, c in feature_groups(feats.columns).items()} == N_FEATURES
-    assert feats.shape[1] == 32
+    assert feats.shape[1] == 48  # Tier 1: 32, Tier 2: graph 8 + entity 8
     assert (feats["ch_share_bitcoin"].fillna(0) == 0).all()  # absent format -> zero share
 
 
@@ -126,3 +132,64 @@ def test_per_day_rates_use_active_days_over_the_whole_span():
     f = account_features(tx, START, END, lookback_hours=72).loc[1]
     assert f["vol_active_days"] == 2  # lookback day + window day
     assert f["vol_out_per_day"] == pytest.approx(1.0)  # 2 sends over 2 active days, not 2 over 1
+
+
+def _chain_tx():
+    """0 -> 1 -> 2 -> 0 (a triangle) plus 3 -> 1; account 1 forwards its receipt within an hour."""
+    t0 = pd.Timestamp("2022-09-03")
+    rows = [
+        (t0, 0, 1),
+        (t0 + pd.Timedelta(minutes=30), 1, 2),
+        (t0 + pd.Timedelta(hours=2), 2, 0),
+        (t0 + pd.Timedelta(hours=3), 3, 1),
+    ]
+    tx = pd.DataFrame(rows, columns=["ts", "src_id", "dst_id"])
+    n = len(tx)
+    return tx.assign(
+        tx_id=range(n),
+        src_bank=1,
+        dst_bank=2,
+        amount_usd=100.0,
+        is_laundering=0,
+        is_self=False,
+        cross_bank=True,
+        currency_paid=pd.Categorical(["US Dollar"] * n),
+        currency_received=pd.Categorical(["US Dollar"] * n),
+        payment_format=pd.Categorical(["ACH", "ACH", "Wire", "Wire"]),
+    )
+
+
+def test_graph_features_on_a_known_graph():
+    f = account_features(_chain_tx(), START, END)
+    assert f.loc[0, "gr_clustering"] == pytest.approx(1.0)  # 0's two partners (1, 2) trade
+    assert f.loc[3, "gr_clustering"] == 0.0
+    assert f.loc[1, "gr_coreness"] == 2.0 and f.loc[3, "gr_coreness"] == 1.0
+    # Account 2's only sender is 1, which forwarded its one receipt within an hour.
+    assert f.loc[2, "gr_in_nbr_fwd72_mean"] == pytest.approx(f.loc[1, "pt_fwd_72h_share"])
+    # Account 1's senders are 0 (half ACH) and 3 (all Wire).
+    expected = (f.loc[0, "ch_share_ach"] + f.loc[3, "ch_share_ach"]) / 2
+    assert f.loc[1, "gr_in_nbr_ach_mean"] == pytest.approx(expected)
+    assert np.isfinite(f["gr_log_pagerank"]).all()
+
+
+def test_entity_table_counts_accounts_and_parses_owner_type():
+    meta = pd.DataFrame(
+        {
+            "bank": [1, 1, 2, 3],
+            "account": ["a", "b", "c", "d"],
+            "entity_id": ["E1", "E1", "E2", "E3"],
+            "entity_name": ["Corporation #7", "Corporation #7", "Individual #9", "Something #1"],
+        }
+    )
+    index = pd.DataFrame(
+        {
+            "account_id": [0, 1, 2, 3, 4],
+            "bank": [1, 1, 2, 3, 9],
+            "account": ["a", "b", "c", "d", "zz"],
+        }
+    )
+    e = entity_table(meta, index)
+    assert e.loc[0, "en_log_accounts_per_entity"] == pytest.approx(np.log(2))
+    assert e.loc[0, "en_type_corporation"] == 1 and e.loc[2, "en_type_individual"] == 1
+    assert e.loc[3, "en_type_other"] == 1
+    assert np.isnan(e.loc[4, "en_type_other"])  # not in the accounts file

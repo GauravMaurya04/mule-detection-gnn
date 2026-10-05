@@ -43,3 +43,15 @@ def test_test_windows_need_final(window):
         check_window_allowed(window, final=False)
     check_window_allowed(window, final=True)
     check_window_allowed("val", final=False)
+
+
+def test_multignn_log_reports_test_f1_at_the_best_validation_epoch():
+    from mule.eval.multignn import parse_log
+
+    log = "\n".join(
+        f"INFO Validation F1: {v}\nINFO Test F1: {t}"
+        for v, t in [(0.40, 0.30), (0.55, 0.50), (0.55, 0.70), (0.52, 0.65)]
+    )
+    parsed = parse_log(log)
+    assert parsed["best_epoch"] == 1 and parsed["test_f1"] == 0.50  # first epoch reaching 0.55
+    assert parsed["epochs"] == 4

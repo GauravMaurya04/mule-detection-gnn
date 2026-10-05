@@ -29,15 +29,28 @@ def test_design_matrices_never_contain_labels_or_absolute_time(project):
         cols = list(data["train"].X.columns)
         assert not [c for c in cols if "laundering" in c or "mule" in c or c in ("ts", "e_ts")]
     assert node["train"].y.sum() > 0 and node["val"].y.sum() > 0
-    assert edge["train"].X.shape[1] == 16 + 2 * 32
+    assert edge["train"].X.shape[1] == 16 + 2 * 48
     assert len(edge["train"].y) == len(edge["train"].meta)
 
 
 @pytest.mark.parametrize("task", ["node", "edge"])
 def test_train_evaluate_and_final_guard(project, task):
-    for model in ("rule_ach", "rules", "xgb"):
+    for model in ("rule_ach", "rules", "xgb", "xgb_graph", "xgb_full"):
         summary = run_train(project, task, model, n_seeds=2)
-        assert len(summary["seeds"]) == (2 if model == "xgb" else 1)
+        assert len(summary["seeds"]) == (2 if model.startswith("xgb") else 1)
+    sizes = {
+        m: json.loads((project.paths.runs_dir / task / m / "train_summary.json").read_text())[
+            "features"
+        ]
+        for m in ("xgb", "xgb_graph", "xgb_full")
+    }
+    own = 0 if task == "node" else 16
+    per_account = 1 if task == "node" else 2
+    assert sizes == {
+        "xgb": own + per_account * 32,
+        "xgb_graph": own + per_account * 40,
+        "xgb_full": own + per_account * 48,
+    }
 
     run_evaluate(project, task, None, final=False)
     metrics = json.loads((project.paths.runs_dir / task / "xgb" / "metrics.json").read_text())
@@ -49,16 +62,21 @@ def test_train_evaluate_and_final_guard(project, task):
     assert metrics["final"] and set(metrics["windows"]) == {"val", "test", "test_no_tail"}
     assert "Window: test_no_tail" in report.read_text()
 
-    # A later normal run must not erase the recorded final results.
+    # A later normal run must not erase the recorded final results...
     report = run_evaluate(project, task, None, final=False)
     assert final_path.exists() and "Window: test_no_tail" in report.read_text()
+    # ...and a frozen model refuses to retrain without --force.
+    with pytest.raises(FileExistsError):
+        run_train(project, task, "xgb", n_seeds=1)
+    if task == "edge":
+        assert "F1 @ 0.5 (IBM protocol)" in report.read_text()
     if task == "node":
         assert "pr_auc_ci_low" in metrics["windows"]["test"]
         assert metrics["windows"]["val"]["pr_auc"]["mean"] > 0.05
 
 
 def test_scorer_explains_one_account_and_lists_the_top(project):
-    run_train(project, "node", "xgb", n_seeds=1)
+    run_train(project, "node", "xgb", n_seeds=1, force=True)
     scores = pd.read_parquet(
         project.paths.runs_dir / "node" / "xgb" / "seed0" / "scores_val.parquet"
     )

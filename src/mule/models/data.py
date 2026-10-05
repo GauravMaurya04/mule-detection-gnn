@@ -87,41 +87,46 @@ def edge_own_features(tx: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_edge(cfg: Config, names=("train", *EVAL_WINDOWS)) -> dict[str, TaskData]:
+    """Transaction rows with own + sender + receiver features. Each matrix is preallocated and
+    filled in place (no hstack/concat copies): the train matrix alone is ~1.5 GB on HI-Small."""
     manifest = load_manifest(cfg.paths.processed_dir / "split_manifest.json")
     columns = _check_features(cfg)
     tx = read_parquet(cfg.paths.interim_dir / "transactions.parquet", TX_SCHEMA)
-    own = edge_own_features(tx)
+    own = edge_own_features(tx).to_numpy()
     feats = read_parquet(cfg.paths.processed_dir / "account_features.parquet")
     feats["window"] = feats["window"].astype(str)
     by_window = {w: g.set_index("account_id")[columns] for w, g in feats.groupby("window")}
-    col_names = [*own.columns, *[f"src_{c}" for c in columns], *[f"dst_{c}" for c in columns]]
+    del feats
+    n_own, n_acct = own.shape[1], len(columns)
+    own_names = list(edge_own_features(tx.head(1)).columns)
+    col_names = [*own_names, *[f"src_{c}" for c in columns], *[f"dst_{c}" for c in columns]]
+    src_all, dst_all, ts = tx["src_id"].to_numpy(), tx["dst_id"].to_numpy(), tx["ts"]
 
-    def build(window: str) -> TaskData:
+    def mask_for(window: str) -> np.ndarray:
         start, end = window_bounds(manifest, window)
-        mask = ((tx["ts"] >= start) & (tx["ts"] < end)).to_numpy()
-        rows = tx.loc[mask]
-        acct = by_window[window]
-        X = np.hstack(
-            [
-                own.loc[mask].to_numpy(),
-                acct.reindex(rows["src_id"].to_numpy()).to_numpy(dtype=np.float32),
-                acct.reindex(rows["dst_id"].to_numpy()).to_numpy(dtype=np.float32),
-            ]
-        )
-        meta = rows[["tx_id", "is_laundering"]].assign(window=window).reset_index(drop=True)
+        return ((ts >= start) & (ts < end)).to_numpy()
+
+    def build(windows: list[str]) -> TaskData:
+        masks = [mask_for(w) for w in windows]
+        n = int(sum(m.sum() for m in masks))
+        X = np.empty((n, n_own + 2 * n_acct), dtype=np.float32)
+        metas, row = [], 0
+        for window, mask in zip(windows, masks, strict=True):
+            k = int(mask.sum())
+            acct = by_window[window]
+            X[row : row + k, :n_own] = own[mask]
+            X[row : row + k, n_own : n_own + n_acct] = acct.reindex(src_all[mask]).to_numpy()
+            X[row : row + k, n_own + n_acct :] = acct.reindex(dst_all[mask]).to_numpy()
+            metas.append(tx.loc[mask, ["tx_id", "is_laundering"]].assign(window=window))
+            row += k
+        meta = pd.concat(metas, ignore_index=True)
         return TaskData(
-            pd.DataFrame(X, columns=col_names), rows["is_laundering"].to_numpy(np.int8), meta
+            pd.DataFrame(X, columns=col_names, copy=False),
+            meta["is_laundering"].to_numpy(np.int8),
+            meta,
         )
 
     out = {}
     for name in names:
-        if name == "train":
-            parts = [build(s) for s in manifest["train_snapshots"]]
-            out["train"] = TaskData(
-                pd.concat([p.X for p in parts], ignore_index=True),
-                np.concatenate([p.y for p in parts]),
-                pd.concat([p.meta for p in parts], ignore_index=True),
-            )
-        else:
-            out[name] = build(name)
+        out[name] = build(list(manifest["train_snapshots"]) if name == "train" else [name])
     return out

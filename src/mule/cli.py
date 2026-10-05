@@ -65,23 +65,28 @@ def train(
     task: str = TASK,
     model: str = typer.Option("xgb", "--model", "-m", help="rule_ach, rules or xgb."),
     seeds: int = typer.Option(3, "--seeds", help="Seeds to train (rules always use one)."),
+    force: bool = typer.Option(False, "--force", help="Retrain even a frozen (--final) model."),
 ) -> None:
     """Train one model on one task; saves models, val thresholds and scores under runs/."""
     from mule.models.train import run_train
 
-    summary = _timed("train", run_train, load_config(config), task, model, seeds)
+    summary = _timed("train", run_train, load_config(config), task, model, seeds, None, force)
     for s in summary["seeds"]:
         typer.echo(f"  seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f} ({s['train_seconds']}s)")
 
 
 @app.command()
-def baselines(config: Path = CONFIG, seeds: int = typer.Option(3, "--seeds")) -> None:
-    """v1: rule_ach, rules and xgb on both tasks, then validation metrics."""
+def baselines(
+    config: Path = CONFIG,
+    seeds: int = typer.Option(3, "--seeds"),
+    model: list[str] = typer.Option(None, "--model", "-m", help="Repeatable; default: all."),
+) -> None:
+    """Train models on both tasks (skipping frozen ones), then validation metrics."""
     from mule.eval.evaluate import run_evaluate
     from mule.models.train import run_baselines
 
     cfg = load_config(config)
-    typer.echo(_timed("baselines", run_baselines, cfg, seeds).to_string(index=False))
+    typer.echo(_timed("baselines", run_baselines, cfg, seeds, model or None).to_string(index=False))
     for task in ("node", "edge"):
         typer.echo((run_evaluate(cfg, task, None, final=False)).read_text())
 
@@ -116,6 +121,21 @@ def score(
         typer.echo(score_account(cfg, account, window, model))
     else:
         typer.echo(top_accounts(cfg, top or 10, window, model))
+
+
+@app.command("import-multignn")
+def import_multignn_cmd(
+    config: Path = CONFIG,
+    log: Path = typer.Option(Path("runs/edge/multignn/train.log"), "--log"),
+    name: str = typer.Option("multignn", "--name"),
+) -> None:
+    """Add IBM Multi-GNN's own run (from its log) to the transaction results."""
+    from mule.eval.evaluate import write_results
+    from mule.eval.multignn import import_multignn
+
+    cfg = load_config(config)
+    typer.echo(import_multignn(cfg, log, name))
+    typer.echo(write_results(cfg, "edge").read_text())
 
 
 if __name__ == "__main__":

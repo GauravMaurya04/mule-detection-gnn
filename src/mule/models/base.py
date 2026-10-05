@@ -13,6 +13,19 @@ import pandas as pd
 class Model(ABC):
     name: str = "base"
     deterministic: bool = False  # deterministic models need only one seed
+    probabilistic: bool = False  # scores are probabilities, so a 0.5 cut is meaningful
+    groups: tuple[str, ...] | None = None  # feature groups used; None = every column
+
+    def select_columns(self, columns) -> list[str]:
+        """Columns this model sees; transaction columns are e_*, src_<group>_*, dst_<group>_*."""
+        if self.groups is None:
+            return list(columns)
+        keep = []
+        for c in columns:
+            base = c[4:] if c.startswith(("src_", "dst_")) else c
+            if c.startswith("e_") or any(base.startswith(g + "_") for g in self.groups):
+                keep.append(c)
+        return keep
 
     @abstractmethod
     def fit(self, train, val, seed: int) -> dict:
