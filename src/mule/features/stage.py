@@ -10,7 +10,7 @@ import pandas as pd
 from mule.config import Config
 from mule.features.account import GROUPS, account_features, feature_groups
 from mule.io import TX_SCHEMA, read_parquet, write_parquet
-from mule.labels.split import ALL_WINDOWS, load_manifest, window_bounds
+from mule.labels.split import label_windows, load_manifest, window_bounds
 
 
 def run_features(cfg: Config) -> dict:
@@ -22,7 +22,8 @@ def run_features(cfg: Config) -> dict:
     tx = read_parquet(cfg.paths.interim_dir / "transactions.parquet", TX_SCHEMA)
 
     frames, timings = [], {}
-    for name in ALL_WINDOWS:
+    windows = label_windows(manifest)
+    for name in windows:
         t0 = time.perf_counter()
         start, end = window_bounds(manifest, name)
         feats = account_features(
@@ -31,7 +32,7 @@ def run_features(cfg: Config) -> dict:
         frames.append(feats.reset_index().assign(window=name))
         timings[name] = round(time.perf_counter() - t0, 1)
     out = pd.concat(frames, ignore_index=True)
-    out["window"] = pd.Categorical(out["window"], categories=list(ALL_WINDOWS))
+    out["window"] = pd.Categorical(out["window"], categories=windows)
     columns = [c for c in out.columns if c not in ("window", "account_id")]
     out = out[["window", "account_id", *columns]]
     write_parquet(out, processed / "account_features.parquet")
@@ -40,7 +41,7 @@ def run_features(cfg: Config) -> dict:
         "config_hash": cfg.section_hash("dataset", "split", "labels", "features"),
         "feature_columns": columns,
         "groups": {GROUPS[k]: v for k, v in feature_groups(columns).items()},
-        "rows_per_window": out["window"].value_counts().reindex(ALL_WINDOWS).to_dict(),
+        "rows_per_window": out["window"].value_counts().reindex(windows).to_dict(),
         "seconds_per_window": timings,
     }
     (processed / "account_features.meta.json").write_text(json.dumps(meta, indent=2))

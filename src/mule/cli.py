@@ -56,5 +56,67 @@ def features(config: Path = CONFIG) -> None:
     typer.echo(_timed("features", run_features, load_config(config)))
 
 
+TASK = typer.Option("node", "--task", "-t", help="node (accounts) or edge (transactions).")
+
+
+@app.command()
+def train(
+    config: Path = CONFIG,
+    task: str = TASK,
+    model: str = typer.Option("xgb", "--model", "-m", help="rule_ach, rules or xgb."),
+    seeds: int = typer.Option(3, "--seeds", help="Seeds to train (rules always use one)."),
+) -> None:
+    """Train one model on one task; saves models, val thresholds and scores under runs/."""
+    from mule.models.train import run_train
+
+    summary = _timed("train", run_train, load_config(config), task, model, seeds)
+    for s in summary["seeds"]:
+        typer.echo(f"  seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f} ({s['train_seconds']}s)")
+
+
+@app.command()
+def baselines(config: Path = CONFIG, seeds: int = typer.Option(3, "--seeds")) -> None:
+    """v1: rule_ach, rules and xgb on both tasks, then validation metrics."""
+    from mule.eval.evaluate import run_evaluate
+    from mule.models.train import run_baselines
+
+    cfg = load_config(config)
+    typer.echo(_timed("baselines", run_baselines, cfg, seeds).to_string(index=False))
+    for task in ("node", "edge"):
+        typer.echo((run_evaluate(cfg, task, None, final=False)).read_text())
+
+
+@app.command()
+def evaluate(
+    config: Path = CONFIG,
+    task: str = TASK,
+    model: list[str] = typer.Option(None, "--model", "-m", help="Repeatable; default: all."),
+    final: bool = typer.Option(False, "--final", help="Also score the test windows (logged)."),
+) -> None:
+    """Metrics from saved scores -> runs/<task>/<model>/metrics.json, reports/results_<task>.md."""
+    from mule.eval.evaluate import run_evaluate
+
+    path = run_evaluate(load_config(config), task, model or None, final)
+    typer.echo(path.read_text())
+
+
+@app.command()
+def score(
+    config: Path = CONFIG,
+    account: str = typer.Option(None, "--account", "-a", help="BANK:ACCOUNT, e.g. 10:8000EBD30"),
+    top: int = typer.Option(0, "--top", help="List the N highest-scoring accounts instead."),
+    window: str = typer.Option("test", "--window", "-w", help="val, test or test_no_tail."),
+    model: str = typer.Option("xgb", "--model", "-m"),
+) -> None:
+    """Score one account with its strongest evidence, or list the top accounts."""
+    from mule.score import score_account, top_accounts
+
+    cfg = load_config(config)
+    if account:
+        typer.echo(score_account(cfg, account, window, model))
+    else:
+        typer.echo(top_accounts(cfg, top or 10, window, model))
+
+
 if __name__ == "__main__":
     app()

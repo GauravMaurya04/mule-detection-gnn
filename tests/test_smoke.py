@@ -46,13 +46,15 @@ def test_labels_and_features_stages(tiny_project):
     run_ingest(cfg)
     summary = run_labels(cfg)
     names = [w["window"] for w in summary["windows"]]
-    assert names == ["train", "val", "test", "test_no_tail"]
+    assert names[-3:] == ["val", "test", "test_no_tail"]
+    assert all(n.startswith("train_s") for n in names[:-3])
     assert (cfg.paths.processed_dir / "split_manifest.json").exists()
     assert (cfg.paths.reports_dir / "labels.md").exists()
 
     labels = pd.read_parquet(cfg.paths.processed_dir / "account_labels.parquet")
-    train = labels[labels["window"] == "train"]
+    train = labels[labels["window"].astype(str).str.startswith("train_s")]
     assert int(train["is_mule"].sum()) == 4  # all laundering happens on day one
+    assert not train["prior_mule"].any()  # nobody can be a repeat mule in the first snapshot
 
     out = run_features(cfg)
     feats = pd.read_parquet(cfg.paths.processed_dir / "account_features.parquet")

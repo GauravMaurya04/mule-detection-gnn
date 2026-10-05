@@ -6,14 +6,16 @@ paths:
   interim_dir: data/interim
   processed_dir: data/processed
   reports_dir: reports
+  runs_dir: runs
 
 split:
   # IBM Multi-GNN's split: whole days, chosen so shares come closest to 60/20/20.
   # Phase 0 result on HI-Small: train Sep 1-6, validation Sep 7-8, test Sep 9-18.
   shares: [0.6, 0.2, 0.2]
   # Normal activity ends on Sep 10; later days are a laundering-heavy generator tail.
-  # The no-tail test window stops here.
   no_tail_end: "2022-09-11"
+  # Training rows come from 2-day snapshots, the same shape as validation and test.
+  train_snapshot_days: 2
 
 labels:
   # completed: send inside the window, receipt any time before (rule B, the label)
@@ -23,3 +25,29 @@ labels:
 features:
   lookback_hours: 72       # features see this much history before each window starts
   forward_hours: [24, 72]  # pass-through shares; Phase 0 set X = 72 h
+
+models:
+  rules:
+    ach_share_min: 0.5        # account flagged when most transfers are ACH...
+    fwd_72h_share_min: 0.5    # ...most incoming money moves on within 72 h...
+    net_flow_abs_max: 0.2     # ...and little money stays behind
+  xgb:
+    n_estimators: 1000
+    learning_rate: 0.05
+    max_depth: 6
+    subsample: 0.8
+    colsample_bytree: 0.8
+    min_child_weight: 1.0
+    early_stopping_rounds: 50
+    device: cuda  # GPU verified on Day 2; set back to cpu if XGBoost reports a CUDA error
+
+evaluation:
+  k_fixed: 100
+  k_share: 0.001
+  bootstrap: 1000
+
+tracking:
+  # MLflow 3 rejects the old ./mlruns file store, so runs go to a local SQLite file.
+  # Browse with: mlflow ui --backend-store-uri sqlite:///mlflow.db
+  # Set to "" to disable MLflow; metrics.json is always written either way.
+  mlflow_uri: sqlite:///mlflow.db

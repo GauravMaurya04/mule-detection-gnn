@@ -3,7 +3,11 @@
 IBM cuts the timeline into whole days counted from the first timestamp, then picks the two
 cut days (i, j) whose train/val/test transaction shares have the smallest worst-case relative
 error against the target shares. On HI-Small that gives train Sep 1-6, val Sep 7-8, test Sep 9-18.
-We add a fourth window, test_no_tail, that stops where normal activity ends.
+
+On top of IBM's three windows:
+- the train period is cut into snapshots of `train_snapshot_days` (2 days -> train_s1..s3), so
+  training rows have the same shape as the 2-day validation and test windows;
+- test_no_tail stops where normal activity ends (the post-Sep 10 tail is a generator artifact).
 """
 
 from __future__ import annotations
@@ -16,7 +20,6 @@ import pandas as pd
 
 DAY = pd.Timedelta(days=1)
 EVAL_WINDOWS = ("val", "test", "test_no_tail")
-ALL_WINDOWS = ("train", *EVAL_WINDOWS)
 
 
 def daily_counts(ts: pd.Series) -> tuple[pd.Timestamp, np.ndarray]:
@@ -40,26 +43,40 @@ def choose_cut_days(counts: np.ndarray, shares=(0.6, 0.2, 0.2)) -> tuple[int, in
     return best_ij
 
 
-def build_manifest(ts: pd.Series, shares=(0.6, 0.2, 0.2), no_tail_end=None) -> dict:
+def build_manifest(
+    ts: pd.Series, shares=(0.6, 0.2, 0.2), no_tail_end=None, train_snapshot_days: int = 2
+) -> dict:
     origin, counts = daily_counts(ts)
     i, j = choose_cut_days(counts, shares)
     val_start, test_start = origin + i * DAY, origin + j * DAY
     end = ts.max() + pd.Timedelta(minutes=1)  # windows are [start, end)
     no_tail = min(pd.Timestamp(no_tail_end), end) if no_tail_end else end
-    windows = {
-        "train": (origin, val_start),
-        "val": (val_start, test_start),
-        "test": (test_start, end),
-        "test_no_tail": (test_start, no_tail),
-    }
-    shares_out = counts[:i].sum(), counts[i:j].sum(), counts[j:].sum()
+
+    windows: dict[str, tuple[pd.Timestamp, pd.Timestamp]] = {}
+    snapshots = []
+    for k, day in enumerate(range(0, i, train_snapshot_days), start=1):
+        start = origin + day * DAY
+        stop = min(origin + (day + train_snapshot_days) * DAY, val_start)
+        windows[f"train_s{k}"] = (start, stop)
+        snapshots.append(f"train_s{k}")
+    windows["val"] = (val_start, test_start)
+    windows["test"] = (test_start, end)
+    windows["test_no_tail"] = (test_start, no_tail)
+    period = counts[:i].sum(), counts[i:j].sum(), counts[j:].sum()
     return {
         "method": "ibm_days",
         "target_shares": list(shares),
-        "actual_shares": [round(float(s) / float(counts.sum()), 4) for s in shares_out],
+        "actual_shares": [round(float(s) / float(counts.sum()), 4) for s in period],
         "cut_days": [int(i), int(j)],
+        "train_period": (origin, val_start),
+        "train_snapshots": snapshots,
         "windows": windows,
     }
+
+
+def label_windows(manifest: dict) -> list[str]:
+    """Every window that gets labels and features, in time order."""
+    return [*manifest["train_snapshots"], *EVAL_WINDOWS]
 
 
 def window_bounds(manifest: dict, name: str) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -68,21 +85,21 @@ def window_bounds(manifest: dict, name: str) -> tuple[pd.Timestamp, pd.Timestamp
 
 
 def assign_window(ts: pd.Series, manifest: dict) -> pd.Series:
-    """Train/val/test label for each transaction (test_no_tail is a subset of test)."""
+    """Snapshot / val / test name for each transaction (test_no_tail is a subset of test)."""
+    names = [*manifest["train_snapshots"], "val", "test"]
     out = pd.Series(pd.NA, index=ts.index, dtype="string")
-    for name in ("train", "val", "test"):
+    for name in names:
         start, end = window_bounds(manifest, name)
         out[(ts >= start) & (ts < end)] = name
-    return out.astype("category")
+    return out.astype(pd.CategoricalDtype(names))
 
 
 def save_manifest(manifest: dict, path: Path) -> None:
-    serialisable = {
-        **manifest,
-        "windows": {k: [str(a), str(b)] for k, (a, b) in manifest["windows"].items()},
-    }
+    out = dict(manifest)
+    out["windows"] = {k: [str(a), str(b)] for k, (a, b) in manifest["windows"].items()}
+    out["train_period"] = [str(t) for t in manifest["train_period"]]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(serialisable, indent=2))
+    path.write_text(json.dumps(out, indent=2))
 
 
 def load_manifest(path: Path) -> dict:
@@ -90,4 +107,5 @@ def load_manifest(path: Path) -> dict:
         raise FileNotFoundError(f"{path} not found: run `mule labels` first")
     raw = json.loads(path.read_text())
     raw["windows"] = {k: (pd.Timestamp(a), pd.Timestamp(b)) for k, (a, b) in raw["windows"].items()}
+    raw["train_period"] = tuple(pd.Timestamp(t) for t in raw["train_period"])
     return raw

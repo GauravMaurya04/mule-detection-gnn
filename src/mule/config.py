@@ -21,11 +21,13 @@ class Paths(_Strict):
     interim_dir: Path
     processed_dir: Path
     reports_dir: Path
+    runs_dir: Path = Path("runs")
 
 
 class SplitConfig(_Strict):
     shares: tuple[float, float, float] = (0.6, 0.2, 0.2)
     no_tail_end: date | None = None
+    train_snapshot_days: int = Field(2, ge=1)
 
     @model_validator(mode="after")
     def _shares_sum_to_one(self) -> SplitConfig:
@@ -43,6 +45,38 @@ class FeaturesConfig(_Strict):
     forward_hours: list[int] = [24, 72]
 
 
+class RulesConfig(_Strict):
+    ach_share_min: float = 0.5
+    fwd_72h_share_min: float = 0.5
+    net_flow_abs_max: float = 0.2
+
+
+class XGBConfig(_Strict):
+    n_estimators: int = 1000
+    learning_rate: float = 0.05
+    max_depth: int = 6
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    min_child_weight: float = 1.0
+    early_stopping_rounds: int = 50
+    device: Literal["cpu", "cuda"] = "cpu"
+
+
+class ModelsConfig(_Strict):
+    rules: RulesConfig = RulesConfig()
+    xgb: XGBConfig = XGBConfig()
+
+
+class EvaluationConfig(_Strict):
+    k_fixed: int = 100
+    k_share: float = 0.001
+    bootstrap: int = Field(1000, ge=0)
+
+
+class TrackingConfig(_Strict):
+    mlflow_uri: str = "sqlite:///mlflow.db"
+
+
 class Config(_Strict):
     dataset: str = "HI-Small"
     seed: int = 42
@@ -50,6 +84,9 @@ class Config(_Strict):
     split: SplitConfig = SplitConfig()
     labels: LabelsConfig = LabelsConfig()
     features: FeaturesConfig = FeaturesConfig()
+    models: ModelsConfig = ModelsConfig()
+    evaluation: EvaluationConfig = EvaluationConfig()
+    tracking: TrackingConfig = TrackingConfig()
 
     def section_hash(self, *sections: str) -> str:
         """Short hash of the named config sections, used to detect stale artifacts."""

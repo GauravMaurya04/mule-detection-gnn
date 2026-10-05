@@ -135,7 +135,9 @@ def _patterns(cfg: Config, tx: pd.DataFrame, index: pd.DataFrame, rep: Report, n
 
 def _splits(tx: pd.DataFrame, cfg: Config, rep: Report, nums: dict) -> None:
     rep.section("6. Time split (IBM day-based) and mule counts per window")
-    manifest = build_manifest(tx["ts"], cfg.split.shares, cfg.split.no_tail_end)
+    manifest = build_manifest(
+        tx["ts"], cfg.split.shares, cfg.split.no_tail_end, cfg.split.train_snapshot_days
+    )
     labels = labels_by_window(tx, manifest, cfg.labels.rule)
     summary = window_summary(tx, manifest, labels)
     rep.note(
@@ -148,7 +150,7 @@ def _splits(tx: pd.DataFrame, cfg: Config, rep: Report, nums: dict) -> None:
     k_rows = [
         {"window": r["window"], **k_values(r["active_accounts"], r["mules"])}
         for r in nums["windows"]
-        if r["window"] != "train"
+        if r["window"] not in manifest["train_snapshots"]
     ]
     rep.note("K values per evaluation window:")
     rep.table(pd.DataFrame(k_rows))

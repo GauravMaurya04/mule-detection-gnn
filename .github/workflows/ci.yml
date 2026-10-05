@@ -13,7 +13,7 @@ jobs:
       - name: Install (CPU only; runners have no GPU and the tests do not need one)
         run: |
           uv venv --python 3.11
-          uv pip install pandas pyarrow pydantic typer pyyaml matplotlib pytest ruff
+          uv pip install pandas pyarrow pydantic typer pyyaml matplotlib pytest ruff xgboost scikit-learn
           uv pip install -e . --no-deps
       - name: Lint
         run: |
