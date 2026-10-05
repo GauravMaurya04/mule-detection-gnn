@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mule"
+version = "0.1.0"
+description = "Mule account detection with graph neural networks"
+requires-python = ">=3.11,<3.12"
+# Dependencies are pinned in requirements.lock: the CUDA builds of PyTorch and
+# pyg-lib come from custom indexes, which plain project metadata cannot express.
+dependencies = []
+
+[project.scripts]
+mule = "mule.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mule"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

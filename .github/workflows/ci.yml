@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install (CPU only; runners have no GPU and the tests do not need one)
+        run: |
+          uv venv --python 3.11
+          uv pip install pandas pyarrow pydantic typer pyyaml matplotlib pytest ruff
+          uv pip install -e . --no-deps
+      - name: Lint
+        run: |
+          .venv/bin/ruff check src tests
+          .venv/bin/ruff format --check src tests
+      - name: Test
+        run: .venv/bin/python -m pytest -q

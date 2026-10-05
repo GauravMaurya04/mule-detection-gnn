@@ -1,0 +1,92 @@
+{
+  "transactions": 5078345,
+  "laundering": 5177,
+  "accounts": 515088,
+  "ts_min": "2022-09-01 00:00:00",
+  "ts_max": "2022-09-18 16:18:00",
+  "days": 18,
+  "usd_rates": {
+    "Australian Dollar": 0.7078142695841616,
+    "Bitcoin": 11874.402485659655,
+    "Brazil Real": 0.17710085849756796,
+    "Canadian Dollar": 0.7579777154084077,
+    "Euro": 1.1717834549467847,
+    "Mexican Peso": 0.047296753746200376,
+    "Ruble": 0.012852809623827198,
+    "Rupee": 0.013615816130639183,
+    "Saudi Riyal": 0.26658846731878644,
+    "Shekel": 0.29612081562434456,
+    "Swiss Franc": 1.0928961732292823,
+    "UK Pound": 1.2916558878379325,
+    "US Dollar": 1.0,
+    "Yen": 0.009487666032807188,
+    "Yuan": 0.14930721013174816
+  },
+  "conversion_ratio_median": 1.000000000032146,
+  "accounts_file_coverage": 1.0,
+  "pattern_coverage": 0.6198570600734016,
+  "pattern_match_rate": 1.0,
+  "windows": [
+    {
+      "window": "train",
+      "from": "2022-09-01 00:00:00",
+      "to": "2022-09-06 13:35:00",
+      "transactions": 3046861,
+      "laundering_tx": 2297,
+      "active_accounts": 512713,
+      "mules": 266,
+      "mule_rate": "1 per 1,927",
+      "adjacent": 2904,
+      "unseen_accounts": NaN,
+      "unseen_mules": NaN
+    },
+    {
+      "window": "val",
+      "from": "2022-09-06 13:36:00",
+      "to": "2022-09-08 16:11:00",
+      "transactions": 1015602,
+      "laundering_tx": 1082,
+      "active_accounts": 236106,
+      "mules": 137,
+      "mule_rate": "1 per 1,723",
+      "adjacent": 1396,
+      "unseen_accounts": 1183.0,
+      "unseen_mules": 1.0
+    },
+    {
+      "window": "test",
+      "from": "2022-09-08 16:12:00",
+      "to": "2022-09-18 16:18:00",
+      "transactions": 1015882,
+      "laundering_tx": 1798,
+      "active_accounts": 356396,
+      "mules": 303,
+      "mule_rate": "1 per 1,176",
+      "adjacent": 1898,
+      "unseen_accounts": 1192.0,
+      "unseen_mules": 8.0
+    }
+  ],
+  "cutoffs": {
+    "train": [
+      null,
+      "2022-09-06 13:36:00"
+    ],
+    "val": [
+      "2022-09-06 13:36:00",
+      "2022-09-08 16:12:00"
+    ],
+    "test": [
+      "2022-09-08 16:12:00",
+      null
+    ]
+  },
+  "mules_whole_period": 899,
+  "adjacent_whole_period": 5458,
+  "mule_laundering_forwarded_share": {
+    "<= 1 h": 0.026385224274406333,
+    "<= 6 h": 0.170844327176781,
+    "<= 24 h": 0.449868073878628,
+    "<= 72 h": 0.8885224274406333
+  }
+}
