@@ -1,0 +1,3 @@
+[submodule "external/multignn"]
+	path = external/multignn
+	url = https://github.com/IBM/Multi-GNN
