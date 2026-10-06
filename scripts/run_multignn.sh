@@ -23,7 +23,7 @@ test -f "$DATA/Small_HI/formatted_transactions.csv" || {
   echo "formatted_transactions.csv not found; check where format_kaggle_files.py wrote it"; exit 1; }
 
 # 2. Point their data_config.json at our folder (every "aml_data" key, wherever it sits).
-"$CONDA" run -n multignn python - "$IBM/data_config.json" "$DATA" << 'PY'
+python3 - "$IBM/data_config.json" "$DATA" << 'PY'
 import json, sys
 path, data = sys.argv[1], sys.argv[2]
 cfg = json.load(open(path))
@@ -42,7 +42,7 @@ PY
 cd "$IBM"
 start=$(date +%s)
 WANDB_MODE=disabled "$CONDA" run --no-capture-output -n multignn \
-  python main.py --data Small_HI --model gin --emlps --reverse_mp --ego --ports "$@" \
+  python main.py --data Small_HI --model gin --emlps --reverse_mp --ego --ports --testing "$@" \
   2>&1 | tee "$OUT/train.log"
 echo $(( $(date +%s) - start )) > "$OUT/seconds.txt"
 echo "Done. Import with: mule import-multignn"

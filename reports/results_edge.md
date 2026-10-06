@@ -8,6 +8,7 @@ minority F1 uses a validation-chosen threshold. F1 @ 0.5 is IBM's protocol (argm
 
 | model | seeds | PR-AUC | minority F1 | precision | recall | F1 @ 0.5 (IBM protocol) | positives |
 |---|---|---|---|---|---|---|---|
+| multignn | 1 | - | - | - | - | 0.331 | - |
 | rule_ach | 1 | 0.014 | 0.048 | 0.025 | 0.415 | - | 1,036 |
 | rules | 1 | 0.027 | 0.088 | 0.073 | 0.111 | - | 1,036 |
 | xgb | 3 | 0.590 ± 0.001 | 0.651 ± 0.003 | 0.886 ± 0.020 | 0.514 ± 0.010 | - | 1,036 |
@@ -18,6 +19,7 @@ minority F1 uses a validation-chosen threshold. F1 @ 0.5 is IBM's protocol (argm
 
 | model | seeds | PR-AUC | minority F1 | precision | recall | F1 @ 0.5 (IBM protocol) | positives |
 |---|---|---|---|---|---|---|---|
+| multignn | 1 | - | - | - | - | 0.508 | - |
 | rule_ach | 1 | 0.016 | 0.041 | 0.022 | 0.452 | - | 1,611 |
 | rules | 1 | 0.048 | 0.099 | 0.076 | 0.145 | - | 1,611 |
 | xgb | 3 | 0.720 ± 0.002 | 0.722 ± 0.003 | 0.822 ± 0.024 | 0.645 ± 0.013 | - | 1,611 |
