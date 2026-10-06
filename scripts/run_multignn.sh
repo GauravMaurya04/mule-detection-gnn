@@ -23,6 +23,8 @@ test -f "$DATA/Small_HI/formatted_transactions.csv" || {
   echo "formatted_transactions.csv not found; check where format_kaggle_files.py wrote it"; exit 1; }
 
 # 2. Point their data_config.json at our folder (every "aml_data" key, wherever it sits).
+#    Plain python3, not `conda run`: conda run does not pass stdin through, so a heredoc
+#    script would silently do nothing.
 python3 - "$IBM/data_config.json" "$DATA" << 'PY'
 import json, sys
 path, data = sys.argv[1], sys.argv[2]
@@ -35,10 +37,13 @@ def walk(d):
             walk(v)
 walk(cfg)
 json.dump(cfg, open(path, "w"), indent=4)
+if data not in json.dumps(cfg):
+    sys.exit(f"no 'aml_data' key found in {path}; set it to {data} by hand")
 print("aml_data ->", data)
 PY
 
-# 3. Train. W&B is switched off; their per-epoch F1 lines land in train.log.
+# 3. Train. --testing is IBM's own switch that turns W&B off (their wandb.init ignores
+#    WANDB_MODE); their per-epoch F1 lines land in train.log.
 cd "$IBM"
 start=$(date +%s)
 WANDB_MODE=disabled "$CONDA" run --no-capture-output -n multignn \

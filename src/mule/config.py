@@ -43,6 +43,7 @@ class LabelsConfig(_Strict):
 class FeaturesConfig(_Strict):
     lookback_hours: int = Field(72, ge=0)
     forward_hours: list[int] = [24, 72]
+    pattern_pair_cap: int = Field(400, ge=1)
 
 
 class RulesConfig(_Strict):
@@ -73,6 +74,36 @@ class EvaluationConfig(_Strict):
     bootstrap: int = Field(1000, ge=0)
 
 
+class GNNConfig(_Strict):
+    node_features: Literal["engineered", "minimal"] = "engineered"
+    hidden: int = 64
+    layers: int = 2
+    dropout: float = 0.2
+    lr: float = 0.003
+    weight_decay: float = 1e-4
+    fanouts: list[int] = [15, 10]
+    batch_size: int = 512
+    neg_ratio: int = 20
+    min_negatives: int = 200
+    max_epochs: int = 200
+    eval_every: int = 2
+    patience: int = 10  # evaluations without improvement before stopping
+    device: Literal["cpu", "cuda"] = "cuda"
+    score_device: Literal["cpu", "cuda"] = "cuda"
+    edge_chunk: int = 500_000
+    grid: list[dict[str, float]] = []
+
+    @model_validator(mode="after")
+    def _grid_keys(self) -> GNNConfig:
+        allowed = {"hidden", "layers", "dropout", "lr", "weight_decay", "neg_ratio"}
+        for entry in self.grid:
+            if set(entry) - allowed:
+                raise ValueError(
+                    f"gnn.grid keys must be from {sorted(allowed)}, got {sorted(entry)}"
+                )
+        return self
+
+
 class TrackingConfig(_Strict):
     mlflow_uri: str = "sqlite:///mlflow.db"
 
@@ -87,6 +118,7 @@ class Config(_Strict):
     models: ModelsConfig = ModelsConfig()
     evaluation: EvaluationConfig = EvaluationConfig()
     tracking: TrackingConfig = TrackingConfig()
+    gnn: GNNConfig = GNNConfig()
 
     def section_hash(self, *sections: str) -> str:
         """Short hash of the named config sections, used to detect stale artifacts."""

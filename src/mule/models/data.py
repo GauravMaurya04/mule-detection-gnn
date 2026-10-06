@@ -16,6 +16,7 @@ import pandas as pd
 
 from mule.config import Config
 from mule.features.account import PAYMENT_FORMATS, _slug
+from mule.features.patterns import EDGE_COLUMNS as PATTERN_EDGE_COLUMNS
 from mule.io import TX_SCHEMA, read_parquet
 from mule.labels.split import EVAL_WINDOWS, load_manifest, window_bounds
 
@@ -97,10 +98,20 @@ def load_edge(cfg: Config, names=("train", *EVAL_WINDOWS)) -> dict[str, TaskData
     feats["window"] = feats["window"].astype(str)
     by_window = {w: g.set_index("account_id")[columns] for w, g in feats.groupby("window")}
     del feats
-    n_own, n_acct = own.shape[1], len(columns)
-    own_names = list(edge_own_features(tx.head(1)).columns)
+    pattern_path = cfg.paths.processed_dir / "edge_patterns.parquet"
+    if not pattern_path.exists():
+        raise FileNotFoundError(f"{pattern_path} not found: rerun `mule features`")
+    edge_pa = read_parquet(pattern_path)
+    edge_pa["window"] = edge_pa["window"].astype(str)
+    pa_by_window = {
+        w: g.set_index("tx_id")[PATTERN_EDGE_COLUMNS] for w, g in edge_pa.groupby("window")
+    }
+    del edge_pa
+    n_own, n_acct, n_pa = own.shape[1], len(columns), len(PATTERN_EDGE_COLUMNS)
+    own_names = [*edge_own_features(tx.head(1)).columns, *PATTERN_EDGE_COLUMNS]
     col_names = [*own_names, *[f"src_{c}" for c in columns], *[f"dst_{c}" for c in columns]]
     src_all, dst_all, ts = tx["src_id"].to_numpy(), tx["dst_id"].to_numpy(), tx["ts"]
+    tx_ids = tx["tx_id"].to_numpy()
 
     def mask_for(window: str) -> np.ndarray:
         start, end = window_bounds(manifest, window)
@@ -109,14 +120,18 @@ def load_edge(cfg: Config, names=("train", *EVAL_WINDOWS)) -> dict[str, TaskData
     def build(windows: list[str]) -> TaskData:
         masks = [mask_for(w) for w in windows]
         n = int(sum(m.sum() for m in masks))
-        X = np.empty((n, n_own + 2 * n_acct), dtype=np.float32)
+        X = np.empty((n, n_own + n_pa + 2 * n_acct), dtype=np.float32)
         metas, row = [], 0
         for window, mask in zip(windows, masks, strict=True):
             k = int(mask.sum())
             acct = by_window[window]
             X[row : row + k, :n_own] = own[mask]
-            X[row : row + k, n_own : n_own + n_acct] = acct.reindex(src_all[mask]).to_numpy()
-            X[row : row + k, n_own + n_acct :] = acct.reindex(dst_all[mask]).to_numpy()
+            X[row : row + k, n_own : n_own + n_pa] = (
+                pa_by_window[window].reindex(tx_ids[mask]).to_numpy()
+            )
+            a = n_own + n_pa
+            X[row : row + k, a : a + n_acct] = acct.reindex(src_all[mask]).to_numpy()
+            X[row : row + k, a + n_acct :] = acct.reindex(dst_all[mask]).to_numpy()
             metas.append(tx.loc[mask, ["tx_id", "is_laundering"]].assign(window=window))
             row += k
         meta = pd.concat(metas, ignore_index=True)

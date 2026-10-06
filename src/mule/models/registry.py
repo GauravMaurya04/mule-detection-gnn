@@ -5,12 +5,22 @@ from __future__ import annotations
 from mule.config import Config
 from mule.models.base import Model
 
-MODEL_NAMES = ("rule_ach", "rules", "xgb", "xgb_graph", "xgb_full")
+MODEL_NAMES = (
+    "rule_ach",
+    "rules",
+    "xgb",
+    "xgb_graph",
+    "xgb_full",
+    "xgb_pattern",
+    "xgb_pattern_full",
+)
 # XGBoost variants differ only in the feature groups they see, so their gaps are clean ablations.
 XGB_GROUPS = {
     "xgb": ("vol", "cp", "pt", "ch", "xb"),  # Tier 1 (v1 baseline)
     "xgb_graph": ("vol", "cp", "pt", "ch", "xb", "gr"),  # + graph features
     "xgb_full": ("vol", "cp", "pt", "ch", "xb", "gr", "en"),  # + entity features
+    "xgb_pattern": ("vol", "cp", "pt", "ch", "xb", "gr", "pa"),  # graph + pattern features
+    "xgb_pattern_full": ("vol", "cp", "pt", "ch", "xb", "gr", "en", "pa"),  # everything
 }
 TASKS = ("node", "edge")
 

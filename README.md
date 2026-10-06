@@ -20,7 +20,10 @@ mule score -a BANK:ACCOUNT # one account with its strongest SHAP evidence
 ```
 
 Single model: `mule train -t edge -m xgb_graph --seeds 3` (models: rule_ach, rules, xgb,
-xgb_graph, xgb_full; a model with recorded --final results needs `--force` to retrain).
+xgb_graph, xgb_full, xgb_pattern, xgb_pattern_full; a model with recorded --final results needs `--force` to retrain).
+
+GNNs (account task): `pytest -q tests/test_gnn.py` first, then `mule gnn-time -m gine_rmp`,
+then `mule gnn-tune -m sage|gine|gine_rmp` (shared 6-config grid, then 3 seeds of the winner).
 
 IBM Multi-GNN reference: `scripts/run_multignn.sh <their args>` then `mule import-multignn`. MLflow runs live in `mlflow.db`;
 browse them with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.

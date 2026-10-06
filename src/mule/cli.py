@@ -123,6 +123,72 @@ def score(
         typer.echo(top_accounts(cfg, top or 10, window, model))
 
 
+@app.command()
+def compare(
+    config: Path = CONFIG,
+    task: str = TASK,
+    a: str = typer.Option(..., "--a", help="Model A, e.g. xgb_pattern"),
+    b: str = typer.Option(..., "--b", help="Model B, e.g. xgb_graph"),
+    window: str = typer.Option("val", "--window", "-w"),
+    n: int = typer.Option(1000, "--n", help="Bootstrap resamples (use ~200 for transactions)."),
+    final: bool = typer.Option(False, "--final"),
+) -> None:
+    """Paired bootstrap of the PR-AUC difference A - B on the same rows (validation by default)."""
+    from mule.eval.compare import compare as run_compare
+
+    result = run_compare(load_config(config), task, a, b, window, n, final)
+    for k, v in result.items():
+        typer.echo(f"{k}: {v}")
+
+
+GNN_KIND = typer.Option("gine_rmp", "--model", "-m", help="sage, gine or gine_rmp.")
+
+
+@app.command("gnn-time")
+def gnn_time(config: Path = CONFIG, model: str = GNN_KIND) -> None:
+    """Time one epoch + one validation pass before committing to a grid."""
+    from mule.models.gnn.train import run_gnn_time
+
+    for k, v in run_gnn_time(load_config(config), model).items():
+        typer.echo(f"{k}: {v}")
+
+
+@app.command("gnn-train")
+def gnn_train(
+    config: Path = CONFIG,
+    model: str = GNN_KIND,
+    seeds: int = typer.Option(3, "--seeds"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Train a GNN (tuned parameters if `gnn-tune` ran, else the config defaults)."""
+    from mule.models.gnn.train import run_gnn_train
+
+    summary = _timed(
+        "gnn-train", run_gnn_train, load_config(config), model, seeds, None, None, None, force
+    )
+    for s in summary["seeds"]:
+        typer.echo(
+            f"  seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f} "
+            f"(best epoch {s['best_epoch']}, {s['train_seconds']}s)"
+        )
+
+
+@app.command("gnn-tune")
+def gnn_tune(
+    config: Path = CONFIG,
+    model: str = GNN_KIND,
+    seeds: int = typer.Option(3, "--seeds"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Run the shared grid (seed 0), then train the winner with N seeds."""
+    from mule.models.gnn.train import run_gnn_tune
+
+    result = _timed("gnn-tune", run_gnn_tune, load_config(config), model, seeds, force)
+    for t in result["trials"]:
+        typer.echo(f"  {t['params']}: val PR-AUC {t['val_pr_auc']:.4f} ({t['seconds']}s)")
+    typer.echo(f"best: {result['best']['params']}")
+
+
 @app.command("import-multignn")
 def import_multignn_cmd(
     config: Path = CONFIG,

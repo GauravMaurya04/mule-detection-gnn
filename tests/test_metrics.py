@@ -55,3 +55,16 @@ def test_multignn_log_reports_test_f1_at_the_best_validation_epoch():
     parsed = parse_log(log)
     assert parsed["best_epoch"] == 1 and parsed["test_f1"] == 0.50  # first epoch reaching 0.55
     assert parsed["epochs"] == 4
+
+
+def test_paired_bootstrap_detects_a_real_difference_and_not_a_fake_one():
+    from mule.eval.compare import paired_bootstrap
+
+    rng = np.random.default_rng(1)
+    y = rng.random(3000) < 0.05
+    good = y * 1.0 + rng.normal(0, 0.6, 3000)
+    weak = y * 0.4 + rng.normal(0, 0.6, 3000)
+    diffs = paired_bootstrap(y, good, weak, n=200)
+    assert np.percentile(diffs, 2.5) > 0
+    same = paired_bootstrap(y, good, good + rng.normal(0, 1e-9, 3000), n=200)
+    assert np.percentile(same, 2.5) <= 0 <= np.percentile(same, 97.5)

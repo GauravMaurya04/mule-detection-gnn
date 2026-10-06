@@ -25,6 +25,7 @@ labels:
 features:
   lookback_hours: 72       # features see this much history before each window starts
   forward_hours: [24, 72]  # pass-through shares; Phase 0 set X = 72 h
+  pattern_pair_cap: 400    # accounts with senders x receivers above this are hubs: no 2-hop paths
 
 models:
   rules:
@@ -45,6 +46,44 @@ evaluation:
   k_fixed: 100
   k_share: 0.001
   bootstrap: 1000
+
+gnn:
+  node_features: engineered   # "minimal" = constant node input, for the ablation
+  hidden: 64
+  layers: 2
+  dropout: 0.2
+  lr: 0.003
+  weight_decay: 0.0001
+  fanouts: [15, 10]           # neighbours sampled per hop while training
+  batch_size: 512
+  neg_ratio: 100              # sampled negatives per positive, redrawn every epoch
+  min_negatives: 200
+  max_epochs: 200             # epochs are ~1 s on the laptop GPU, so stopping does the limiting
+  eval_every: 2               # epochs between validation scoring passes
+  patience: 10                # validation passes without improvement before stopping
+  device: cuda
+  score_device: cuda          # falls back to CPU automatically if the GPU runs out of memory
+  edge_chunk: 500000          # edges per message chunk when scoring a whole window
+  # The same 16 configs for every GNN variant (seed 0, best validation PR-AUC). Day 4 timing
+  # (0.9 s per epoch + validation pass) put a full run near a minute, so the grid widened from 6.
+  # First tuning round: more negatives won (100 beat 20), so the levels are now 100 and 300.
+  grid:
+    - {hidden: 64, lr: 0.001, neg_ratio: 100, layers: 2}
+    - {hidden: 64, lr: 0.003, neg_ratio: 100, layers: 2}
+    - {hidden: 128, lr: 0.001, neg_ratio: 100, layers: 2}
+    - {hidden: 128, lr: 0.003, neg_ratio: 100, layers: 2}
+    - {hidden: 64, lr: 0.001, neg_ratio: 300, layers: 2}
+    - {hidden: 64, lr: 0.003, neg_ratio: 300, layers: 2}
+    - {hidden: 128, lr: 0.001, neg_ratio: 300, layers: 2}
+    - {hidden: 128, lr: 0.003, neg_ratio: 300, layers: 2}
+    - {hidden: 64, lr: 0.001, neg_ratio: 100, layers: 3}
+    - {hidden: 64, lr: 0.003, neg_ratio: 100, layers: 3}
+    - {hidden: 128, lr: 0.001, neg_ratio: 100, layers: 3}
+    - {hidden: 128, lr: 0.003, neg_ratio: 100, layers: 3}
+    - {hidden: 64, lr: 0.001, neg_ratio: 300, layers: 3}
+    - {hidden: 64, lr: 0.003, neg_ratio: 300, layers: 3}
+    - {hidden: 128, lr: 0.001, neg_ratio: 300, layers: 3}
+    - {hidden: 128, lr: 0.003, neg_ratio: 300, layers: 3}
 
 tracking:
   # MLflow 3 rejects the old ./mlruns file store, so runs go to a local SQLite file.

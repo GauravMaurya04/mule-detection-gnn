@@ -13,7 +13,9 @@ Tier 1 (32 columns: vol 9, cp 6, pt 6, ch 9, xb 2) describes each account's own 
 Tier 2 adds 16: graph 8 (PageRank both ways, coreness, clustering, and the pass-through and ACH
 habits of the accounts it trades with) and entity 8 (accounts held by the same owner, owner type).
 Graph features are computed on the same span; neighbour averages use neighbours' Tier 1
-features, never their labels. Payment formats are pinned to the seven AMLworld formats so the
+features, never their labels. Pattern features (7, see features/patterns.py) count the
+laundering shapes the simulator plants: fan bursts, scatter-gather, 3-cycles, 2-hop paths.
+55 columns in all. Payment formats are pinned to the seven AMLworld formats so the
 column set never depends on the data. Column prefixes name the group, which the
 explainability stage relies on.
 """
@@ -24,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from mule.features.passthrough import forwarding_delays
+from mule.features.patterns import pattern_tables
 from mule.labels.mule_rule import window_slice
 
 GROUPS = {
@@ -34,11 +37,12 @@ GROUPS = {
     "xb": "Cross-bank",
     "gr": "Graph",
     "en": "Entity",
+    "pa": "Patterns",
 }
 TIER1 = ("vol", "cp", "pt", "ch", "xb")
 FORBIDDEN = ("laundering", "mule", "adjacent", "pattern", "label")
 PAYMENT_FORMATS = ("ACH", "Bitcoin", "Cash", "Cheque", "Credit Card", "Reinvestment", "Wire")
-N_FEATURES = {"vol": 9, "cp": 6, "pt": 6, "ch": 7 + 2, "xb": 2, "gr": 8, "en": 8}
+N_FEATURES = {"vol": 9, "cp": 6, "pt": 6, "ch": 7 + 2, "xb": 2, "gr": 8, "en": 8, "pa": 7}
 
 
 def _slug(name: str) -> str:
@@ -227,6 +231,7 @@ def account_features(
     lookback_hours: int = 72,
     forward_hours: tuple[int, ...] | list[int] = (24, 72),
     entity: pd.DataFrame | None = None,
+    pair_cap: int = 400,
 ) -> pd.DataFrame:
     """Tier 1 + Tier 2 features for every account active in [start, end), indexed by account_id.
 
@@ -241,7 +246,8 @@ def account_features(
     span_accounts = np.union1d(span["src_id"].to_numpy(), span["dst_id"].to_numpy())
     tier1 = _tier1(span, span_accounts, forward_hours)
     graph = _graph(span, tier1)
-    f = pd.concat([tier1, graph], axis=1).reindex(active)
+    patterns, _, _ = pattern_tables(span, pair_cap)
+    f = pd.concat([tier1, graph, patterns], axis=1).reindex(active)
     entity_cols = [
         "en_log_accounts_per_entity",
         *[f"en_type_{_slug(t)}" for t in ENTITY_TYPES],

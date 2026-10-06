@@ -22,6 +22,10 @@ class Model(ABC):
             return list(columns)
         keep = []
         for c in columns:
+            if c.startswith("e_pa_"):  # transaction pattern features belong to group "pa"
+                if "pa" in self.groups:
+                    keep.append(c)
+                continue
             base = c[4:] if c.startswith(("src_", "dst_")) else c
             if c.startswith("e_") or any(base.startswith(g + "_") for g in self.groups):
                 keep.append(c)

@@ -29,28 +29,37 @@ def test_design_matrices_never_contain_labels_or_absolute_time(project):
         cols = list(data["train"].X.columns)
         assert not [c for c in cols if "laundering" in c or "mule" in c or c in ("ts", "e_ts")]
     assert node["train"].y.sum() > 0 and node["val"].y.sum() > 0
-    assert edge["train"].X.shape[1] == 16 + 2 * 48
+    assert edge["train"].X.shape[1] == 16 + 5 + 2 * 55  # own, patterns, sender, receiver
     assert len(edge["train"].y) == len(edge["train"].meta)
 
 
 @pytest.mark.parametrize("task", ["node", "edge"])
 def test_train_evaluate_and_final_guard(project, task):
-    for model in ("rule_ach", "rules", "xgb", "xgb_graph", "xgb_full"):
+    for model in ("rule_ach", "rules", "xgb", "xgb_graph", "xgb_full", "xgb_pattern"):
         summary = run_train(project, task, model, n_seeds=2)
         assert len(summary["seeds"]) == (2 if model.startswith("xgb") else 1)
     sizes = {
         m: json.loads((project.paths.runs_dir / task / m / "train_summary.json").read_text())[
             "features"
         ]
-        for m in ("xgb", "xgb_graph", "xgb_full")
+        for m in ("xgb", "xgb_graph", "xgb_full", "xgb_pattern")
     }
     own = 0 if task == "node" else 16
+    edge_pa = 0 if task == "node" else 5  # transaction pattern columns only in "pa" models
     per_account = 1 if task == "node" else 2
     assert sizes == {
         "xgb": own + per_account * 32,
         "xgb_graph": own + per_account * 40,
         "xgb_full": own + per_account * 48,
+        "xgb_pattern": own + edge_pa + per_account * 47,  # 32 + graph 8 + patterns 7
     }
+
+    from mule.eval.compare import compare
+
+    result = compare(project, task, "xgb_pattern", "xgb_graph", n=30)
+    assert result["winner"] in ("xgb_pattern", "xgb_graph") and result["window"] == "val"
+    with pytest.raises(PermissionError):
+        compare(project, task, "xgb_pattern", "xgb_graph", window="test", n=10)
 
     run_evaluate(project, task, None, final=False)
     metrics = json.loads((project.paths.runs_dir / task / "xgb" / "metrics.json").read_text())

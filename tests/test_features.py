@@ -107,10 +107,10 @@ def test_known_pass_through_values():
     assert f["cp_log_unique_senders"] == pytest.approx(np.log1p(2))
 
 
-def test_schema_is_exactly_48_columns_whatever_formats_appear():
+def test_schema_is_exactly_55_columns_whatever_formats_appear():
     feats = account_features(_random_tx(), START, END)  # only 4 of the 7 formats present
     assert {p: len(c) for p, c in feature_groups(feats.columns).items()} == N_FEATURES
-    assert feats.shape[1] == 48  # Tier 1: 32, Tier 2: graph 8 + entity 8
+    assert feats.shape[1] == 55  # Tier 1: 32; graph 8, entity 8, patterns 7
     assert (feats["ch_share_bitcoin"].fillna(0) == 0).all()  # absent format -> zero share
 
 
