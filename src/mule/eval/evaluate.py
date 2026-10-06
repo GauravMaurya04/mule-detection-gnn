@@ -32,7 +32,9 @@ def check_window_allowed(window: str, final: bool) -> None:
         raise PermissionError(f"window {window!r} is test data: pass --final to evaluate it")
 
 
-def node_metrics(df: pd.DataFrame, threshold: float, cfg: Config, ci: int = 0) -> dict:
+def node_metrics(
+    df: pd.DataFrame, threshold: float, cfg: Config, ci: int = 0, probabilistic: bool = False
+) -> dict:
     y, s = df["is_mule"].to_numpy(bool), df["score"].to_numpy(float)
     ks = k_values(len(df), int(y.sum()), cfg.evaluation.k_fixed, cfg.evaluation.k_share)
     out = {"rows": len(df), "positives": int(y.sum()), "pr_auc": M.pr_auc(y, s)}
@@ -53,6 +55,8 @@ def node_metrics(df: pd.DataFrame, threshold: float, cfg: Config, ci: int = 0) -
         )
     if ci:
         out["pr_auc_ci_low"], out["pr_auc_ci_high"] = M.bootstrap_pr_auc_ci(y, s, ci)
+    cal = M.calibration(y, s) if probabilistic else {"brier": np.nan, "ece": np.nan}
+    out.update(cal)
     return out
 
 
@@ -69,6 +73,7 @@ def edge_metrics(df: pd.DataFrame, threshold: float, probabilistic: bool) -> dic
         "precision@val_threshold": t["precision"],
         "recall@val_threshold": t["recall"],
         "minority_f1@0.5": ibm,
+        **(M.calibration(y, s) if probabilistic else {"brier": np.nan, "ece": np.nan}),
     }
 
 
@@ -105,11 +110,11 @@ def evaluate_model(cfg: Config, task: str, model_dir: Path, final: bool) -> dict
         for i, seed_dir in enumerate(seeds):
             info = json.loads((seed_dir / "run.json").read_text())
             df = pd.read_parquet(seed_dir / f"scores_{window}.parquet")
+            probabilistic = info.get("probabilistic", model_dir.name.startswith("xgb"))
             if task == "node":
                 ci = cfg.evaluation.bootstrap if (i == 0 and window in TEST_WINDOWS) else 0
-                m = node_metrics(df, info["threshold"], cfg, ci)
+                m = node_metrics(df, info["threshold"], cfg, ci, probabilistic)
             else:
-                probabilistic = info.get("probabilistic", model_dir.name.startswith("xgb"))
                 m = edge_metrics(df, info["threshold"], probabilistic)
             m["train_seconds"] = info["train_seconds"]
             m["score_seconds_per_1k"] = info["score_seconds_per_1k"]
@@ -140,6 +145,8 @@ NODE_COLUMNS = [
     ("adjacent_in_top_0.1%", "adjacent in top 0.1%"),
     ("recall_first_time@R", "first-time recall@R"),
     ("recall_repeat@R", "repeat recall@R"),
+    ("brier", "Brier"),
+    ("ece", "ECE"),
 ]
 EDGE_COLUMNS = [
     ("pr_auc", "PR-AUC"),
@@ -147,6 +154,8 @@ EDGE_COLUMNS = [
     ("precision@val_threshold", "precision"),
     ("recall@val_threshold", "recall"),
     ("minority_f1@0.5", "F1 @ 0.5 (IBM protocol)"),
+    ("brier", "Brier"),
+    ("ece", "ECE"),
 ]
 
 
@@ -189,12 +198,7 @@ def write_results(cfg: Config, task: str) -> Path:
                 continue
             row = {"model": r["model"], "seeds": r["seeds"]}
             for key, label in cols:
-                v = ms.get(key)
-                row[label] = (
-                    "-"
-                    if v is None or np.isnan(v["mean"])
-                    else (f"{v['mean']:.3f}" + (f" ± {v['std']:.3f}" if v["std"] else ""))
-                )
+                row[label] = _cell(ms.get(key))  # tiny values (FPR, Brier, ECE) stay visible
             if "pr_auc_ci_low" in ms:
                 row["PR-AUC 95% CI (seed 0)"] = (
                     f"{ms['pr_auc_ci_low']['mean']:.3f}-{ms['pr_auc_ci_high']['mean']:.3f}"

@@ -70,3 +70,16 @@ def bootstrap_pr_auc_ci(y, scores, n: int, seed: int = 0) -> tuple[float, float]
         if y[idx].sum():
             values.append(average_precision_score(y[idx], scores[idx]))
     return float(np.percentile(values, 2.5)), float(np.percentile(values, 97.5))
+
+
+def calibration(y, scores, bins: int = 10) -> dict[str, float]:
+    """Brier score and expected calibration error (equal-width bins), for probability scores."""
+    y = np.asarray(y, dtype=float)
+    p = np.clip(np.asarray(scores, dtype=float), 0.0, 1.0)
+    which = np.minimum((p * bins).astype(int), bins - 1)
+    ece = 0.0
+    for b in range(bins):
+        m = which == b
+        if m.any():
+            ece += m.mean() * abs(y[m].mean() - p[m].mean())
+    return {"brier": float(np.mean((p - y) ** 2)), "ece": float(ece)}

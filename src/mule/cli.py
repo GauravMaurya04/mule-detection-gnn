@@ -141,6 +141,74 @@ def compare(
         typer.echo(f"{k}: {v}")
 
 
+@app.command("tune-xgb")
+def tune_xgb(
+    config: Path = CONFIG,
+    task: str = TASK,
+    base: str = typer.Option(..., "--base", help="Champion feature set, e.g. xgb_graph."),
+    trials: int = typer.Option(20, "--trials"),
+    seeds: int = typer.Option(3, "--seeds"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Random search on validation for the champion's features, then N seeds of the best."""
+    from mule.models.tune import run_xgb_tune
+
+    result = _timed("tune-xgb", run_xgb_tune, load_config(config), task, base, trials, seeds, force)
+    best = result["best"]
+    typer.echo(f"best: {best['label']} val PR-AUC {best['val_pr_auc']:.4f} {best['params']}")
+    for s in result["final"]["seeds"]:
+        typer.echo(f"  xgb_tuned seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f}")
+
+
+@app.command()
+def stack(
+    config: Path = CONFIG,
+    base: str = typer.Option("xgb_graph", "--base", help="Account champion feature set."),
+    seeds: int = typer.Option(3, "--seeds"),
+    refresh_oof: bool = typer.Option(False, "--refresh-oof", help="Rebuild the GNN scores."),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Out-of-fold GraphSAGE scores, then xgb_stacked (account task)."""
+    from mule.models.tune import run_stack
+
+    result = _timed(
+        "stack", run_stack, load_config(config), base, seeds, "sage", refresh_oof, force
+    )
+    if result["oof"]:
+        for f in result["oof"]["folds"]:
+            typer.echo(f"  fold holding out {f['held_out']}: val PR-AUC {f['val_pr_auc']:.4f}")
+    typer.echo(f"xgb_stacked settings from: {result['params_from']}")
+    for s in result["final"]["seeds"]:
+        typer.echo(f"  xgb_stacked seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f}")
+
+
+@app.command()
+def calibrate(
+    config: Path = CONFIG,
+    task: str = TASK,
+    model: str = typer.Option(..., "--model", "-m"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Seed-averaged, calibrated copy of a model: <model>_cal (Platt or isotonic, by CV Brier)."""
+    from mule.eval.combine import run_calibrate
+
+    typer.echo(run_calibrate(load_config(config), task, model, force))
+
+
+@app.command()
+def ensemble(
+    config: Path = CONFIG,
+    task: str = TASK,
+    a: str = typer.Option(..., "--a"),
+    b: str = typer.Option(..., "--b"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Weighted average of two calibrated models; the weight is chosen on validation PR-AUC."""
+    from mule.eval.combine import run_ensemble
+
+    typer.echo(run_ensemble(load_config(config), task, a, b, force=force))
+
+
 GNN_KIND = typer.Option("gine_rmp", "--model", "-m", help="sage, gine or gine_rmp.")
 
 

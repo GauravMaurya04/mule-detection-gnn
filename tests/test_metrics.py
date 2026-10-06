@@ -84,3 +84,36 @@ def test_paper_rows_appear_in_the_transaction_results(tmp_path):
     assert add_paper_rows(cfg)["paper_multipna_eu"] == pytest.approx(0.6816)
     text = write_results(cfg, "edge").read_text()
     assert "paper_multigin_eu" in text and "0.682" in text
+
+
+def test_results_table_shows_tiny_values_instead_of_zero(tmp_path):
+    import json
+
+    from mule.config import load_config
+    from mule.eval.evaluate import write_results
+
+    (tmp_path / "c.yaml").write_text(
+        f"paths:\n  raw_dir: {tmp_path}\n  interim_dir: {tmp_path}\n"
+        f"  processed_dir: {tmp_path}\n  reports_dir: {tmp_path}/reports\n"
+        f"  runs_dir: {tmp_path}/runs\n"
+    )
+    cfg = load_config(tmp_path / "c.yaml")
+    model = cfg.paths.runs_dir / "node" / "m"
+    model.mkdir(parents=True)
+    cell = {"mean": 0.0005, "std": 0.0}
+    metrics = {
+        "model": "m",
+        "seeds": 1,
+        "windows": {
+            "val": {
+                "pr_auc": {"mean": 0.7, "std": 0.0},
+                "brier": cell,
+                "ece": cell,
+                "fpr@val_threshold": {"mean": 0.0002, "std": 0.0},
+                "positives": {"mean": 242, "std": 0},
+            }
+        },
+    }
+    (model / "metrics.json").write_text(json.dumps(metrics))
+    text = write_results(cfg, "node").read_text()
+    assert "5.0e-04" in text and "2.0e-04" in text and "| 0.000 |" not in text

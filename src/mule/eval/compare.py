@@ -43,6 +43,8 @@ def _n_features(cfg: Config, task: str, model: str) -> int:
     info = json.loads((cfg.paths.runs_dir / task / model / "seed0" / "run.json").read_text())
     if "feature_columns" in info:
         return len(info["feature_columns"])
+    if "n_features" in info:  # calibrated and ensemble runs
+        return int(info["n_features"])
     stats = cfg.paths.runs_dir / task / model / "seed0" / "graph_stats.json"
     return len(json.loads(stats.read_text())["feature_columns"]) if stats.exists() else 0
 
@@ -83,6 +85,9 @@ def compare(
         winner, reason = model_a, "interval above 0"
     elif high < 0:
         winner, reason = model_b, "interval below 0"
+    elif fa == fb:
+        winner = model_b
+        reason = f"interval includes 0 and both use {fa} features, so the incumbent (B) stays"
     else:
         winner = model_a if fa < fb else model_b
         reason = f"interval includes 0, so fewer features wins ({min(fa, fb)} vs {max(fa, fb)})"

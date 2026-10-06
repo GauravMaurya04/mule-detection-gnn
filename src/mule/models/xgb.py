@@ -38,6 +38,8 @@ class XGBModel(Model):
             "subsample": self.cfg.subsample,
             "colsample_bytree": self.cfg.colsample_bytree,
             "min_child_weight": self.cfg.min_child_weight,
+            "lambda": self.cfg.reg_lambda,
+            "gamma": self.cfg.gamma,
             # Moderate reweighting: sqrt keeps rare positives visible without swamping calibration.
             "scale_pos_weight": math.sqrt(neg / max(pos, 1)),
             "seed": seed,

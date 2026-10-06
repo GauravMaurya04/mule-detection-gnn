@@ -171,3 +171,24 @@ def test_ablation_needs_the_tuning_it_borrows(project):
     cfg.gnn = cfg.gnn.model_copy(update={"node_features": "minimal"})
     with pytest.raises(FileNotFoundError):
         run_gnn_train(cfg, "sage", n_seeds=1, params_from="gnn_not_tuned")
+
+
+def test_stacking_builds_out_of_fold_scores_and_a_stacked_model(project):
+    from mule.models.tune import run_stack
+
+    tuning = project.paths.runs_dir / "node" / "_tuning"
+    tuning.mkdir(parents=True, exist_ok=True)
+    (tuning / "gnn_sage.json").write_text(
+        json.dumps({"best_params": {"hidden": 16, "layers": 2, "lr": 0.003, "neg_ratio": 20}})
+    )
+    result = run_stack(project, "xgb_graph", n_seeds=1, refresh_oof=True)
+    assert len(result["oof"]["folds"]) >= 2
+    import pandas as pd
+
+    oof = pd.read_parquet(project.paths.processed_dir / "gnn_oof_node.parquet")
+    assert {"val", "test", "test_no_tail"} <= set(oof["window"])
+    assert oof["gnn_score"].between(0, 1).all()
+    info = json.loads(
+        (project.paths.runs_dir / "node" / "xgb_stacked" / "seed0" / "run.json").read_text()
+    )
+    assert "st_gnn_logit" in info["feature_columns"]

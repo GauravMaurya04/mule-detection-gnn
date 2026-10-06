@@ -49,6 +49,22 @@ def load_node(cfg: Config) -> dict[str, TaskData]:
     if len(df) != len(labels):
         raise RuntimeError("labels and features disagree on accounts: rerun labels + features")
     df["window"] = df["window"].astype(str)
+    oof = cfg.paths.processed_dir / "gnn_oof_node.parquet"
+    if oof.exists():  # stacking feature (group "st"); only models listing "st" will see it
+        meta = json.loads((cfg.paths.processed_dir / "gnn_oof_node.meta.json").read_text())
+        if meta["features_hash"] != cfg.section_hash("dataset", "split", "labels", "features"):
+            raise RuntimeError("gnn_oof_node.parquet is stale: rerun `mule stack`")
+        st = pd.read_parquet(oof)
+        st["window"] = st["window"].astype(str)
+        p = np.clip(st["gnn_score"].to_numpy(float), 1e-6, 1 - 1e-6)
+        st["st_gnn_logit"] = np.log(p / (1 - p))
+        df = df.merge(
+            st[["window", "account_id", "st_gnn_logit"]],
+            on=["window", "account_id"],
+            how="left",
+            validate="one_to_one",
+        )
+        columns = [*columns, "st_gnn_logit"]
     parts = {"train": df[df["window"].isin(manifest["train_snapshots"])]}
     parts.update({w: df[df["window"] == w] for w in EVAL_WINDOWS})
     return {

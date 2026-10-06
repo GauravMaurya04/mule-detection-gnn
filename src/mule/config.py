@@ -59,6 +59,8 @@ class XGBConfig(_Strict):
     subsample: float = 0.8
     colsample_bytree: float = 0.8
     min_child_weight: float = 1.0
+    reg_lambda: float = 1.0  # XGBoost's defaults, so earlier runs are unchanged
+    gamma: float = 0.0
     early_stopping_rounds: int = 50
     device: Literal["cpu", "cuda"] = "cpu"
 

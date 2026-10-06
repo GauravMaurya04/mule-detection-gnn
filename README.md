@@ -29,6 +29,9 @@ Transaction GNN: `mule gnn-edge-train -m sage` (encoder settings come from the a
 Node-feature ablation: `mule gnn-train -m sage --node-features minimal --params-from gnn_sage`.
 Model choice: `mule compare -t node --a A --b B` (paired bootstrap on validation).
 
+Improvement stage (Day 7): `mule tune-xgb -t node --base xgb_graph`, `mule stack`,
+`mule calibrate -t node -m MODEL`, `mule ensemble -t node --a A --b B`, then `mule compare`.
+
 IBM Multi-GNN reference: `scripts/run_multignn.sh <their args>` then `mule import-multignn`. MLflow runs live in `mlflow.db`;
 browse them with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 
