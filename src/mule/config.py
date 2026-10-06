@@ -91,6 +91,10 @@ class GNNConfig(_Strict):
     device: Literal["cpu", "cuda"] = "cuda"
     score_device: Literal["cpu", "cuda"] = "cuda"
     edge_chunk: int = 500_000
+    edge_neg_ratio: int = 20  # transaction task: normal transactions per laundering one, per epoch
+    edge_batch_size: int = 2048
+    edge_max_epochs: int = 40
+    edge_patience: int = 5
     grid: list[dict[str, float]] = []
 
     @model_validator(mode="after")

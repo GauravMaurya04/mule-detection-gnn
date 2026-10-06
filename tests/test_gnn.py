@@ -84,6 +84,7 @@ def project(tmp_path_factory):
         f.write(
             "gnn:\n  hidden: 16\n  max_epochs: 4\n  eval_every: 1\n  patience: 10\n"
             "  device: cpu\n  score_device: cpu\n  batch_size: 64\n  edge_chunk: 1000\n"
+            "  edge_max_epochs: 3\n  edge_batch_size: 256\n  edge_patience: 3\n"
         )
     cfg = load_config(path)
     run_labels(cfg)
@@ -105,7 +106,8 @@ def test_graphs_align_labels_and_carry_no_label_information(project):
         assert int(g.edge_index.max()) < len(g.nodes)
     assert not [c for c in stats["feature_columns"] if "mule" in c or "laundering" in c]
     minimal, _ = build_graphs(project, "minimal")
-    assert minimal["val"].x.shape[1] == 2
+    assert minimal["val"].x.shape[1] == 4  # constant, active, log in-count, log out-count
+    assert minimal["val"].x[:, 2:].std(dim=0).min() > 0  # nodes are not all identical
 
 
 def test_gnn_trains_scores_and_evaluates_like_any_model(project):
@@ -138,3 +140,34 @@ def test_aggregation_is_an_average_so_sampled_and_full_neighbourhoods_match_in_s
             assert torch.allclose(model(x, ei, ea), model(x, doubled_ei, doubled_ea), atol=1e-5), (
                 kind
             )
+
+
+def test_edge_rows_map_every_transaction_onto_its_window_graph(project):
+    from mule.models.gnn.edge import build_edge_rows
+
+    graphs, stats = build_graphs(project)
+    rows = build_edge_rows(project, graphs, stats)
+    for w, r in rows.items():
+        g = graphs[w]
+        assert len(r.tx_id) == len(r.y) == r.src.numel() == r.attr.shape[0]
+        assert int(r.src.max()) < len(g.nodes) and int(r.dst.max()) < len(g.nodes)
+        assert r.attr.shape[1] == g.edge_attr.shape[1] + 1 + 10  # + is_self + 5 patterns x2
+        assert not torch.isnan(r.attr).any()
+
+
+def test_transaction_gnn_trains_and_evaluates(project):
+    from mule.models.gnn.edge import run_gnn_edge_train
+
+    summary = run_gnn_edge_train(project, "sage", n_seeds=1)
+    assert summary["seeds"][0]["val_pr_auc"] >= 0
+    seed_dir = project.paths.runs_dir / "edge" / "gnn_sage" / "seed0"
+    assert (seed_dir / "scores_test.parquet").exists()
+    report = run_evaluate(project, "edge", ["gnn_sage"], final=False)
+    assert "gnn_sage" in report.read_text()
+
+
+def test_ablation_needs_the_tuning_it_borrows(project):
+    cfg = project.model_copy(deep=True)
+    cfg.gnn = cfg.gnn.model_copy(update={"node_features": "minimal"})
+    with pytest.raises(FileNotFoundError):
+        run_gnn_train(cfg, "sage", n_seeds=1, params_from="gnn_not_tuned")

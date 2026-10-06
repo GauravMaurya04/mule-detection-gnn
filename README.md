@@ -25,6 +25,10 @@ xgb_graph, xgb_full, xgb_pattern, xgb_pattern_full; a model with recorded --fina
 GNNs (account task): `pytest -q tests/test_gnn.py` first, then `mule gnn-time -m gine_rmp`,
 then `mule gnn-tune -m sage|gine|gine_rmp` (shared 6-config grid, then 3 seeds of the winner).
 
+Transaction GNN: `mule gnn-edge-train -m sage` (encoder settings come from the account tuning).
+Node-feature ablation: `mule gnn-train -m sage --node-features minimal --params-from gnn_sage`.
+Model choice: `mule compare -t node --a A --b B` (paired bootstrap on validation).
+
 IBM Multi-GNN reference: `scripts/run_multignn.sh <their args>` then `mule import-multignn`. MLflow runs live in `mlflow.db`;
 browse them with `mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 

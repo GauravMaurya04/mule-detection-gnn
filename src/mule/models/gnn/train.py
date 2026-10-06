@@ -160,13 +160,17 @@ def run_gnn_train(
     graphs=None,
     stats=None,
     force: bool = False,
+    params_from: str | None = None,
 ) -> dict:
+    """`params_from` reuses another run's tuned parameters (for the node-feature ablation)."""
     gcfg = cfg.gnn
     name = run_name(kind, gcfg.node_features)
     out_dir = cfg.paths.runs_dir / "node" / name
     if (out_dir / "metrics_final.json").exists() and not force:
         raise FileExistsError(f"{out_dir} has recorded --final results; pass --force to retrain")
-    tuned = cfg.paths.runs_dir / "node" / "_tuning" / f"{name}.json"
+    tuned = cfg.paths.runs_dir / "node" / "_tuning" / f"{params_from or name}.json"
+    if params is None and params_from and not tuned.exists():
+        raise FileNotFoundError(f"{tuned} not found: run `mule gnn-tune` for {params_from} first")
     if params is None and tuned.exists():
         params = json.loads(tuned.read_text())["best_params"]
         print(f"using tuned parameters from {tuned}: {params}")

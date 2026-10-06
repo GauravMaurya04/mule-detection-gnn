@@ -159,18 +159,52 @@ def gnn_train(
     model: str = GNN_KIND,
     seeds: int = typer.Option(3, "--seeds"),
     force: bool = typer.Option(False, "--force"),
+    node_features: str = typer.Option(None, "--node-features", help="engineered or minimal."),
+    params_from: str = typer.Option(None, "--params-from", help="Reuse tuning, e.g. gnn_sage."),
 ) -> None:
-    """Train a GNN (tuned parameters if `gnn-tune` ran, else the config defaults)."""
+    """Train an account-task GNN (tuned parameters if available, else config defaults)."""
     from mule.models.gnn.train import run_gnn_train
 
+    cfg = load_config(config)
+    if node_features:
+        cfg.gnn = cfg.gnn.model_copy(update={"node_features": node_features})
     summary = _timed(
-        "gnn-train", run_gnn_train, load_config(config), model, seeds, None, None, None, force
+        "gnn-train", run_gnn_train, cfg, model, seeds, None, None, None, force, params_from
     )
     for s in summary["seeds"]:
         typer.echo(
             f"  seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f} "
             f"(best epoch {s['best_epoch']}, {s['train_seconds']}s)"
         )
+
+
+@app.command("gnn-edge-train")
+def gnn_edge_train(
+    config: Path = CONFIG,
+    model: str = GNN_KIND,
+    seeds: int = typer.Option(3, "--seeds"),
+    force: bool = typer.Option(False, "--force"),
+) -> None:
+    """Train the transaction-task GNN (encoder parameters transfer from account-task tuning)."""
+    from mule.models.gnn.edge import run_gnn_edge_train
+
+    summary = _timed("gnn-edge-train", run_gnn_edge_train, load_config(config), model, seeds, force)
+    for s in summary["seeds"]:
+        typer.echo(
+            f"  seed {s['seed']}: val PR-AUC {s['val_pr_auc']:.4f} "
+            f"(best epoch {s['best_epoch']}, {s['train_seconds']}s)"
+        )
+
+
+@app.command("add-paper-rows")
+def add_paper_rows_cmd(config: Path = CONFIG) -> None:
+    """Add the published Multi-GNN test F1 (AML Small HI) as reference rows."""
+    from mule.eval.evaluate import write_results
+    from mule.eval.multignn import add_paper_rows
+
+    cfg = load_config(config)
+    typer.echo(add_paper_rows(cfg))
+    typer.echo(write_results(cfg, "edge").read_text())
 
 
 @app.command("gnn-tune")

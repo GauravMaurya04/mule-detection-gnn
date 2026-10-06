@@ -2,9 +2,10 @@
 
 One graph per window (train snapshots, val, test, test_no_tail). Nodes are the accounts that
 appear in the window's feature span (window plus lookback) or are labelled in the window;
-edges are the span's non-self transfers, sender -> receiver. Node features are the 48 account
-features (or a constant, for the ablation) standardised with train-snapshot statistics, plus
-an `active` flag; accounts seen only in the lookback have no feature row and get zeros.
+edges are the span's non-self transfers, sender -> receiver. Node features are the 55 account
+features standardised with train-snapshot statistics (or, for the ablation, a constant plus
+log transfer counts), plus an `active` flag; accounts seen only in the lookback have no
+feature row and get zeros.
 Edge features never include absolute time: amount, hour and weekday (as sin/cos), the gap
 since the sender's previous transfer, format, cross-bank and cross-currency flags.
 """
@@ -130,7 +131,18 @@ def build_graphs(cfg: Config, node_features: str = "engineered") -> tuple[dict, 
             X = np.nan_to_num((r["X"] - node_mean) / node_std, nan=0.0)  # mean-impute missing
             x = np.hstack([X, active])
         else:
-            x = np.hstack([np.ones((n, 1), np.float32), active])
+            # Raw structure only: a constant plus each account's transfer counts (log scale).
+            # A constant alone is useless with averaging layers: every node would stay identical.
+            n_in = np.bincount(r["dst"], minlength=n).astype(np.float32)
+            n_out = np.bincount(r["src"], minlength=n).astype(np.float32)
+            x = np.hstack(
+                [
+                    np.ones((n, 1), np.float32),
+                    active,
+                    np.log1p(n_in)[:, None],
+                    np.log1p(n_out)[:, None],
+                ]
+            )
         edge = r["edge"].copy()
         edge[:, CONTINUOUS_EDGE] = (edge[:, CONTINUOUS_EDGE] - edge_mean) / edge_std
         lab = r["lab"]

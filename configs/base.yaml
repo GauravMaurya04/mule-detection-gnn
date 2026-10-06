@@ -64,6 +64,10 @@ gnn:
   device: cuda
   score_device: cuda          # falls back to CPU automatically if the GPU runs out of memory
   edge_chunk: 500000          # edges per message chunk when scoring a whole window
+  edge_neg_ratio: 20          # transaction task: normal transactions per laundering one, per epoch
+  edge_batch_size: 2048
+  edge_max_epochs: 40
+  edge_patience: 5            # validation passes without improvement (transaction task)
   # The same 16 configs for every GNN variant (seed 0, best validation PR-AUC). Day 4 timing
   # (0.9 s per epoch + validation pass) put a full run near a minute, so the grid widened from 6.
   # First tuning round: more negatives won (100 beat 20), so the levels are now 100 and 300.

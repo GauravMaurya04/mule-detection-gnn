@@ -59,3 +59,31 @@ def import_multignn(
     out.mkdir(parents=True, exist_ok=True)
     (out / "metrics_final.json").write_text(json.dumps(result, indent=2))
     return {**parsed, "seconds_per_epoch": per_epoch}
+
+
+# Egressy et al., "Provably Powerful Graph Neural Networks for Directed Multigraphs" (AAAI 2024),
+# AML results table, AML Small HI column: test minority-class F1 in %, mean +- std over 5 seeds.
+PAPER_ROWS = {
+    "paper_multigin_eu": (64.79, 1.22),
+    "paper_multipna_eu": (68.16, 2.65),
+}
+
+
+def add_paper_rows(cfg: Config) -> dict:
+    """Published Multi-GNN numbers as reference rows (test window, IBM's argmax protocol)."""
+    written = {}
+    for name, (mean, std) in PAPER_ROWS.items():
+        result = {
+            "model": name,
+            "task": "edge",
+            "final": True,
+            "seeds": 5,
+            "source": "Egressy et al. 2024 (AAAI), AML Small HI, test minority F1",
+            "evaluated_at": datetime.now().isoformat(timespec="seconds"),
+            "windows": {"test": {"minority_f1@0.5": {"mean": mean / 100, "std": std / 100}}},
+        }
+        out = cfg.paths.runs_dir / "edge" / name
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "metrics_final.json").write_text(json.dumps(result, indent=2))
+        written[name] = mean / 100
+    return written

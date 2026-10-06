@@ -68,3 +68,19 @@ def test_paired_bootstrap_detects_a_real_difference_and_not_a_fake_one():
     assert np.percentile(diffs, 2.5) > 0
     same = paired_bootstrap(y, good, good + rng.normal(0, 1e-9, 3000), n=200)
     assert np.percentile(same, 2.5) <= 0 <= np.percentile(same, 97.5)
+
+
+def test_paper_rows_appear_in_the_transaction_results(tmp_path):
+    from mule.config import load_config
+    from mule.eval.evaluate import write_results
+    from mule.eval.multignn import add_paper_rows
+
+    (tmp_path / "c.yaml").write_text(
+        f"paths:\n  raw_dir: {tmp_path}\n  interim_dir: {tmp_path}\n"
+        f"  processed_dir: {tmp_path}\n  reports_dir: {tmp_path}/reports\n"
+        f"  runs_dir: {tmp_path}/runs\n"
+    )
+    cfg = load_config(tmp_path / "c.yaml")
+    assert add_paper_rows(cfg)["paper_multipna_eu"] == pytest.approx(0.6816)
+    text = write_results(cfg, "edge").read_text()
+    assert "paper_multigin_eu" in text and "0.682" in text

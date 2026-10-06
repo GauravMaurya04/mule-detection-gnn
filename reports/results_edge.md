@@ -8,6 +8,8 @@ minority F1 uses a validation-chosen threshold. F1 @ 0.5 is IBM's protocol (argm
 
 | model | seeds | PR-AUC | minority F1 | precision | recall | F1 @ 0.5 (IBM protocol) | positives |
 |---|---|---|---|---|---|---|---|
+| gnn_gine_rmp | 3 | 0.565 ± 0.004 | 0.614 ± 0.008 | 0.840 ± 0.009 | 0.484 ± 0.013 | 0.274 ± 0.028 | 1,036 |
+| gnn_sage | 3 | 0.590 ± 0.002 | 0.635 ± 0.001 | 0.852 ± 0.011 | 0.507 ± 0.005 | 0.259 ± 0.013 | 1,036 |
 | multignn | 1 | - | - | - | - | 0.331 | - |
 | rule_ach | 1 | 0.014 | 0.048 | 0.025 | 0.415 | - | 1,036 |
 | rules | 1 | 0.027 | 0.088 | 0.073 | 0.111 | - | 1,036 |
@@ -22,6 +24,8 @@ minority F1 uses a validation-chosen threshold. F1 @ 0.5 is IBM's protocol (argm
 | model | seeds | PR-AUC | minority F1 | precision | recall | F1 @ 0.5 (IBM protocol) | positives |
 |---|---|---|---|---|---|---|---|
 | multignn | 1 | - | - | - | - | 0.508 | - |
+| paper_multigin_eu | 5 | - | - | - | - | 0.648 ± 0.012 | - |
+| paper_multipna_eu | 5 | - | - | - | - | 0.682 ± 0.026 | - |
 | rule_ach | 1 | 0.016 | 0.041 | 0.022 | 0.452 | - | 1,611 |
 | rules | 1 | 0.048 | 0.099 | 0.076 | 0.145 | - | 1,611 |
 | xgb | 3 | 0.720 ± 0.002 | 0.722 ± 0.003 | 0.822 ± 0.024 | 0.645 ± 0.013 | 0.506 ± 0.030 | 1,611 |
