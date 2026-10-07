@@ -1,10 +1,12 @@
-data/
+# Project-generated data and experiment outputs
+/data/
+/runs/
+/mlruns/
+mlflow.db
+
+# Python environments and caches
 .venv/
-mlruns/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info/
-runs/
-mlflow.db
-mlruns/
