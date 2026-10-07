@@ -1,0 +1,24 @@
+# Reason-code catalog for the account task.
+# A code fires only when (1) its condition holds for the account, measured against the training
+# population (high = at or above the q_high percentile; near_zero = |value| at or below the
+# q_low percentile of |value|), and (2) its feature group is among the account's top positive
+# SHAP contributors. Codes never read labels. RC08 comes from the GNN and is added separately.
+codes:
+  RC01: {name: Pass-through, group: pt, feature: pt_fwd_72h_share, direction: high,
+         text: "Passed on {value:.0%} of incoming transfers within 3 days"}
+  RC02: {name: Many-to-one inflow, group: cp, feature: cp_log_unique_senders, direction: high,
+         transform: expm1, text: "Received from {value:.0f} different senders (typical: {typical:.0f})"}
+  RC03: {name: One-to-many outflow, group: cp, feature: cp_log_unique_receivers, direction: high,
+         transform: expm1, text: "Sent to {value:.0f} different receivers (typical: {typical:.0f})"}
+  RC04: {name: Near-zero balance, group: pt, feature: pt_net_flow, direction: near_zero,
+         text: "Kept almost nothing: money in and out balance within {value:.0%}"}
+  RC05: {name: Many banks, group: xb, feature: xb_n_counterparty_banks, direction: high,
+         text: "Traded with {value:.0f} different banks (typical: {typical:.0f})"}
+  RC06: {name: Currency hopping, group: ch, feature: ch_cross_currency_share, direction: high,
+         text: "Changed currency in {value:.0%} of transfers"}
+  RC07: {name: ACH-heavy, group: ch, feature: ch_share_ach, direction: high,
+         text: "Used ACH for {value:.0%} of transfers (typical: {typical:.0%})"}
+  RC09: {name: Pass-through partners, group: gr, feature: gr_in_nbr_fwd72_mean, direction: high,
+         text: "Its senders themselves pass on {value:.0%} of money within 3 days"}
+  RC10: {name: Busy inflow, group: vol, feature: vol_in_per_day, direction: high,
+         text: "Received {value:.1f} transfers per active day (typical: {typical:.1f})"}

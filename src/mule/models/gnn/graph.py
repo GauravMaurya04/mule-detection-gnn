@@ -50,6 +50,7 @@ class WindowGraph:
     label_nodes: torch.Tensor  # node positions of the window's labelled accounts
     y: torch.Tensor  # float labels, aligned with label_nodes
     meta: pd.DataFrame  # account_id, is_mule, adjacent, prior_mule; row i <-> label_nodes[i]
+    edge_tx_id: np.ndarray | None = None  # tx_id of every edge (for evidence transfers)
 
 
 def edge_table(tx: pd.DataFrame) -> np.ndarray:
@@ -83,24 +84,41 @@ def _safe_std(values: np.ndarray, axis=0) -> tuple[np.ndarray, np.ndarray]:
     return mean.astype(np.float32), std.astype(np.float32)
 
 
-def build_graphs(cfg: Config, node_features: str = "engineered") -> tuple[dict, dict]:
-    """All window graphs plus the train-only standardisation statistics (saved with each run)."""
+def build_graphs(
+    cfg: Config,
+    node_features: str = "engineered",
+    stats: dict | None = None,
+    windows: list[str] | None = None,
+    tx: pd.DataFrame | None = None,
+    feats: pd.DataFrame | None = None,
+) -> tuple[dict, dict]:
+    """Window graphs plus the train-only standardisation statistics (saved with each run).
+
+    `stats` (a run's saved graph_stats.json) rebuilds graphs exactly as that run saw them: its
+    feature columns and its standardisation, e.g. to explain a model trained before new feature
+    groups were added. `windows` limits which graphs are built (stats must then be given).
+    `tx` and `feats` replace the saved transactions and account features (stress test only)."""
     if node_features not in ("engineered", "minimal"):
         raise ValueError("node_features must be 'engineered' or 'minimal'")
+    if windows is not None and stats is None:
+        raise ValueError("building a subset of windows needs saved stats")
     manifest = load_manifest(cfg.paths.processed_dir / "split_manifest.json")
-    columns = _check_features(cfg)
-    tx = read_parquet(cfg.paths.interim_dir / "transactions.parquet", TX_SCHEMA)
+    columns = _check_features(cfg) if stats is None else list(stats["feature_columns"])
+    if tx is None:
+        tx = read_parquet(cfg.paths.interim_dir / "transactions.parquet", TX_SCHEMA)
     edges_all = edge_table(tx)
     labels = read_parquet(cfg.paths.processed_dir / "account_labels.parquet")
     labels["window"] = labels["window"].astype(str)
-    feats = read_parquet(cfg.paths.processed_dir / "account_features.parquet")
-    feats["window"] = feats["window"].astype(str)
+    if feats is None:
+        feats = read_parquet(cfg.paths.processed_dir / "account_features.parquet")
+    feats = feats.assign(window=feats["window"].astype(str))
     lookback = pd.Timedelta(hours=cfg.features.lookback_hours)
     ts, not_self = tx["ts"], ~tx["is_self"].to_numpy()
     src_all, dst_all = tx["src_id"].to_numpy(), tx["dst_id"].to_numpy()
 
     raw = {}
-    for w in [*manifest["train_snapshots"], *EVAL_WINDOWS]:
+    tx_ids = tx["tx_id"].to_numpy()
+    for w in windows or [*manifest["train_snapshots"], *EVAL_WINDOWS]:
         start, end = window_bounds(manifest, w)
         mask = ((ts >= start - lookback) & (ts < end)).to_numpy() & not_self
         lab = labels[labels["window"] == w].sort_values("account_id").reset_index(drop=True)
@@ -111,17 +129,24 @@ def build_graphs(cfg: Config, node_features: str = "engineered") -> tuple[dict, 
             "src": np.searchsorted(nodes, src_all[mask]),
             "dst": np.searchsorted(nodes, dst_all[mask]),
             "edge": edges_all[mask],
+            "tx_id": tx_ids[mask],
             "X": feat_w.reindex(nodes).to_numpy(dtype=np.float32),
             "active": np.isin(nodes, lab["account_id"].to_numpy()),
             "lab": lab,
         }
     del tx, edges_all, feats
 
-    snaps = manifest["train_snapshots"]
-    node_mean, node_std = _safe_std(np.vstack([raw[s]["X"][raw[s]["active"]] for s in snaps]))
-    train_edges = np.vstack([raw[s]["edge"][:, CONTINUOUS_EDGE] for s in snaps])
-    edge_mean, edge_std = _safe_std(train_edges)
-    del train_edges
+    if stats is None:
+        snaps = manifest["train_snapshots"]
+        node_mean, node_std = _safe_std(np.vstack([raw[s]["X"][raw[s]["active"]] for s in snaps]))
+        train_edges = np.vstack([raw[s]["edge"][:, CONTINUOUS_EDGE] for s in snaps])
+        edge_mean, edge_std = _safe_std(train_edges)
+        del train_edges
+    else:
+        node_mean = np.asarray(stats["node_mean"], dtype=np.float32)
+        node_std = np.asarray(stats["node_std"], dtype=np.float32)
+        edge_mean = np.asarray(stats["edge_mean"], dtype=np.float32)
+        edge_std = np.asarray(stats["edge_std"], dtype=np.float32)
 
     graphs = {}
     for w, r in raw.items():
@@ -155,6 +180,7 @@ def build_graphs(cfg: Config, node_features: str = "engineered") -> tuple[dict, 
             label_nodes=torch.from_numpy(np.searchsorted(r["nodes"], lab["account_id"].to_numpy())),
             y=torch.from_numpy(lab["is_mule"].to_numpy(dtype=np.float32)),
             meta=lab[["account_id", "is_mule", "adjacent", "prior_mule"]],
+            edge_tx_id=r["tx_id"],
         )
     stats = {
         "node_features": node_features,

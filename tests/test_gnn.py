@@ -192,3 +192,39 @@ def test_stacking_builds_out_of_fold_scores_and_a_stacked_model(project):
         (project.paths.runs_dir / "node" / "xgb_stacked" / "seed0" / "run.json").read_text()
     )
     assert "st_gnn_logit" in info["feature_columns"]
+
+
+def test_explainer_finds_evidence_and_runs_all_three_checks(project):
+    from pathlib import Path
+
+    from mule.eval.combine import run_ensemble
+    from mule.explain.stage import run_explain
+    from mule.models.train import run_train as run_tabular
+
+    run_tabular(project, "node", "xgb_graph", n_seeds=1)
+    run_gnn_train(project, "sage", n_seeds=1)
+    run_ensemble(project, "node", "xgb_graph", "gnn_sage")
+    cfg = project.model_copy(deep=True)
+    cfg.explain = cfg.explain.model_copy(
+        update={
+            "champion": "ens_xgb_graph__gnn_sage",
+            "catalog": Path("configs/reason_codes.yaml"),
+            "top": 5,
+            "mask_steps": 20,
+            "subgraph_fanouts": [10, 5],
+        }
+    )
+    summary = run_explain(cfg, "val", with_gnn=True)
+    assert set(summary["fidelity"]) == {
+        "score_full",
+        "score_without_evidence",
+        "score_without_random_transfers",
+        "score_evidence_only",
+    }
+    assert 0 <= summary["stability"]["evidence_jaccard_two_seeds"] <= 1
+    import pandas as pd
+
+    df = pd.read_parquet(cfg.paths.processed_dir / "explanations_val.parquet")
+    with_evidence = df[df["subgraph_edges"] > 0]
+    assert len(with_evidence) > 0
+    assert all(len(json.loads(e)) > 0 for e in with_evidence["evidence"])

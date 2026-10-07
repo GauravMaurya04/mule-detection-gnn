@@ -176,3 +176,23 @@ def run_ensemble(
         "val_pr_auc_a_alone": float(aucs[-1]),
         "val_pr_auc_b_alone": float(aucs[0]),
     }
+
+
+def ensemble_components(cfg: Config, task: str, name: str) -> dict:
+    """Rebuild an ensemble's members, weight and Platt calibrators (refit on validation exactly
+    as run_ensemble did), so its score can be split into its members' contributions."""
+    info = json.loads((cfg.paths.runs_dir / task / name / "seed0" / "run.json").read_text())
+    if "members" not in info:
+        raise ValueError(f"{name} is not an ensemble")
+    a, b = info["members"]
+    key, label = ID[task]
+    fa = seed_mean(cfg, task, a, "val")
+    sb = seed_mean(cfg, task, b, "val").set_index(key)["score"].reindex(fa[key]).to_numpy(float)
+    y = fa[label].to_numpy(int)
+    return {
+        "a": a,
+        "b": b,
+        "weight_a": float(info["weight_a"]),
+        "cal_a": Platt().fit(fa["score"].to_numpy(float), y),
+        "cal_b": Platt().fit(sb, y),
+    }

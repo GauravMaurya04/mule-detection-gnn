@@ -209,6 +209,95 @@ def ensemble(
     typer.echo(run_ensemble(load_config(config), task, a, b, force=force))
 
 
+@app.command()
+def explain(
+    config: Path = CONFIG,
+    window: str = typer.Option("test", "--window", "-w"),
+    top: int = typer.Option(0, "--top", help="Accounts to explain (default: config explain.top)."),
+    no_gnn: bool = typer.Option(False, "--no-gnn", help="Skip evidence transfers (no PyTorch)."),
+) -> None:
+    """Reason codes + evidence transfers for the champion's top accounts, with checks."""
+    from mule.explain.stage import run_explain
+
+    cfg = load_config(config)
+    _timed("explain", run_explain, cfg, window, top or None, not no_gnn)
+    typer.echo((cfg.paths.reports_dir / f"explanations_{window}.md").read_text())
+
+
+@app.command()
+def why(
+    config: Path = CONFIG,
+    account: str = typer.Option(..., "--account", "-a", help="BANK:ACCOUNT"),
+    window: str = typer.Option("test", "--window", "-w"),
+    no_gnn: bool = typer.Option(False, "--no-gnn"),
+) -> None:
+    """Why does the champion score this account the way it does?"""
+    import json as _json
+
+    import pandas as pd
+
+    from mule.explain.stage import explain_accounts
+    from mule.io import read_parquet
+
+    cfg = load_config(config)
+    bank, _, acct = account.partition(":")
+    index = read_parquet(cfg.paths.interim_dir / "account_index.parquet")
+    hit = index[(index["bank"] == int(bank)) & (index["account"] == acct)]
+    if hit.empty:
+        raise typer.BadParameter(f"account {account} not found")
+    aid = int(hit["account_id"].iloc[0])
+    scores = pd.read_parquet(
+        cfg.paths.runs_dir / "node" / cfg.explain.champion / "seed0" / f"scores_{window}.parquet"
+    )
+    if aid not in set(scores["account_id"]):
+        typer.echo(f"{account} had no transactions in window {window}.")
+        raise typer.Exit()
+    score = float(scores.loc[scores["account_id"] == aid, "score"].iloc[0])
+    rank = int((scores["score"] > score).sum()) + 1
+    row = explain_accounts(cfg, window, [aid], not no_gnn).iloc[0]
+    typer.echo(f"{account}: score {score:.4f}, rank {rank:,} of {len(scores):,} in {window}")
+    typer.echo(f"GNN share of added risk: {row['gnn_share']:.0%}")
+    codes = _json.loads(row["codes"])
+    typer.echo("Reason codes:" if codes else "No reason code fires (pattern not covered).")
+    for c in codes:
+        typer.echo(f"  {c['code']} {c['name']}: {c['text']}")
+    transfers = _json.loads(row["evidence"])
+    if transfers:
+        typer.echo("Evidence transfers (from the network model):")
+        for t in transfers:
+            typer.echo(
+                f"  {t['ts']}  {t['direction']:>3}  {t['amount_usd']:>12,.2f} USD  "
+                f"{t['format']:<12} {t['counterparty']}"
+            )
+
+
+@app.command("pattern-recall")
+def pattern_recall(
+    config: Path = CONFIG,
+    node_model: str = typer.Option("ens_xgb_graph__gnn_sage", "--node-model"),
+    edge_model: str = typer.Option("ens_xgb_tuned__gnn_sage", "--edge-model"),
+    final: bool = typer.Option(False, "--final", help="Required: reads test labels."),
+) -> None:
+    """Recall by laundering pattern for the champions (test and no-tail windows)."""
+    from mule.eval.day9 import run_pattern_recall
+
+    typer.echo(run_pattern_recall(load_config(config), node_model, edge_model, final=final))
+
+
+@app.command()
+def stress(
+    config: Path = CONFIG,
+    delay_hours: float = typer.Option(48, "--delay-hours"),
+    final: bool = typer.Option(False, "--final", help="Required: reads test labels."),
+    no_gnn: bool = typer.Option(False, "--no-gnn"),
+) -> None:
+    """Delay mules' outgoing laundering and re-score the frozen account champion."""
+    from mule.eval.day9 import run_stress
+
+    cfg = load_config(config)
+    typer.echo(_timed("stress", run_stress, cfg, delay_hours, "test", final, not no_gnn))
+
+
 GNN_KIND = typer.Option("gine_rmp", "--model", "-m", help="sage, gine or gine_rmp.")
 
 

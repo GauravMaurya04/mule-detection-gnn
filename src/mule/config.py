@@ -110,6 +110,27 @@ class GNNConfig(_Strict):
         return self
 
 
+class ExplainConfig(_Strict):
+    champion: str = "ens_xgb_graph__gnn_sage"
+    catalog: Path = Path("configs/reason_codes.yaml")
+    top: int = 200
+    q_high: float = 0.95
+    q_low: float = 0.05
+    top_groups: int = 3
+    max_codes: int = 3
+    # RC08 appears when the GNN supplies MORE than this share of the account's added risk.
+    # None = the GNN's own ensemble weight: it shows only when the network model is relatively
+    # more alarmed than XGBoost (a fixed 0.2 fired on 192 of the top 200 test accounts).
+    gnn_share_min: float | None = None
+    evidence_k: int = 5
+    subgraph_fanouts: list[int] = [50, 20]
+    mask_steps: int = 100
+    mask_seeds: int = 3  # evidence = average of this many learned masks (stability: 2 such sets)
+    mask_lr: float = 0.01
+    size_coef: float = 0.005
+    entropy_coef: float = 0.1
+
+
 class TrackingConfig(_Strict):
     mlflow_uri: str = "sqlite:///mlflow.db"
 
@@ -125,6 +146,7 @@ class Config(_Strict):
     evaluation: EvaluationConfig = EvaluationConfig()
     tracking: TrackingConfig = TrackingConfig()
     gnn: GNNConfig = GNNConfig()
+    explain: ExplainConfig = ExplainConfig()
 
     def section_hash(self, *sections: str) -> str:
         """Short hash of the named config sections, used to detect stale artifacts."""
