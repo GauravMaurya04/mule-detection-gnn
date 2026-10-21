@@ -298,6 +298,36 @@ def stress(
     typer.echo(_timed("stress", run_stress, cfg, delay_hours, "test", final, not no_gnn))
 
 
+@app.command()
+def audit(
+    config: Path = CONFIG,
+    final: bool = typer.Option(False, "--final", help="Also measure test windows (reads labels)."),
+    node_champion: str = typer.Option("ens_xgb_graph__gnn_sage", "--node-champion"),
+    edge_champion: str = typer.Option("ens_xgb_tuned__gnn_sage", "--edge-champion"),
+    boot_node: int = typer.Option(1000, "--boot-node", help="Bootstrap resamples, accounts."),
+    boot_edge: int = typer.Option(200, "--boot-edge", help="Bootstrap resamples, transactions."),
+    train_fit: bool = typer.Option(False, "--train-fit", help="In-sample vs val fit (accounts)."),
+) -> None:
+    """Audit measurements: operating points, CIs, ensemble overlap, slices, errors, importance."""
+    from mule.eval.audit import run_audit
+
+    cfg = load_config(config)
+    path = _timed(
+        "audit",
+        run_audit,
+        cfg,
+        final,
+        node_champion,
+        edge_champion,
+        ("xgb_graph", "gnn_sage", "xgb_pattern"),
+        ("xgb_tuned", "gnn_sage", "xgb_pattern"),
+        boot_node,
+        boot_edge,
+        train_fit,
+    )
+    typer.echo(f"wrote {path} (+ .json, and CSV curves in {cfg.paths.reports_dir / 'audit'})")
+
+
 GNN_KIND = typer.Option("gine_rmp", "--model", "-m", help="sage, gine or gine_rmp.")
 
 
